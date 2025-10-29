@@ -29,22 +29,6 @@ for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
 echo Versão do Python: %PYTHON_VERSION%
 echo.
 
-REM Cria ambiente virtual
-echo 🔄 Criando ambiente virtual...
-python -m venv venv
-if errorlevel 1 (
-    echo ❌ ERRO: Falha ao criar ambiente virtual!
-    pause
-    exit /b 1
-)
-
-REM Ativa ambiente virtual
-echo 🔄 Ativando ambiente virtual...
-call venv\Scripts\activate.bat
-if errorlevel 1 (
-    echo ❌ ERRO: Falha ao ativar ambiente virtual!
-    pause
-    exit /b 1
 )
 
 REM Atualiza pip
@@ -58,6 +42,7 @@ echo Isso pode levar alguns minutos...
 echo.
 pip install -r requirements.txt
 pip install flask scrapy playwright
+pip install instascrape
 
 REM === CORREÇÃO INSTASCRAPE ===
 echo 🔄 Instalando instascrape...
