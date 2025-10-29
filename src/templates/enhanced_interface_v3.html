@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARQV30 Enhanced v3.0 - Interface Aprimorada</title>
+
+    <!-- CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary-color: #4f46e5;
+            --primary-light: #6366f1;
+            --primary-dark: #3730a3;
+            --secondary-color: #7c3aed;
+            --secondary-light: #8b5cf6;
+            --accent-color: #06b6d4;
+            --success-color: #059669;
+            --warning-color: #d97706;
+            --error-color: #dc2626;
+            --info-color: #0284c7;
+
+            --bg-primary: #0a0e23;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1f2937;
+            --bg-card: #374151;
+            --bg-elevated: #4b5563;
+            --text-primary: #ffffff;
+            --text-secondary: #d1d5db;
+            --text-muted: #9ca3af;
+            --border-color: #4b5563;
+            --border-light: #6b7280;
+
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+
+            --gradient-primary: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            --gradient-accent: linear-gradient(135deg, var(--accent-color), var(--primary-light));
+            --gradient-success: linear-gradient(135deg, var(--success-color), #34d399);
+            --gradient-card: linear-gradient(145deg, rgba(55, 65, 81, 0.8), rgba(75, 85, 99, 0.6));
+
+            --border-radius-sm: 0.375rem;
+            --border-radius: 0.5rem;
+            --border-radius-md: 0.75rem;
+            --border-radius-lg: 1rem;
+            --border-radius-xl: 1.5rem;
+            --border-radius-2xl: 2rem;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-weight: 400;
+            line-height: 1.6;
+            background: radial-gradient(ellipse at top, #1e293b 0%, #0f172a 45%, #0a0e23 100%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(79, 70, 229, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(124, 58, 237, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+            position: relative;
+        }
+
+        @media (min-width: 640px) {
+            .main-container {
+                padding: 2rem;
+            }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding: 3rem 2rem;
+            background: var(--gradient-card);
+            border-radius: var(--border-radius-2xl);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-xl);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--gradient-primary);
+        }
+
+        .header h1 {
+            font-size: 3.5rem;
+            font-weight: 900;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .header p {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            max-width: 800px;
+            margin: 0 auto 2rem auto;
+            font-weight: 400;
+            line-height: 1.7;
+        }
+
+        .workflow-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .step-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .step-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        }
+
+        .step-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .step-card.completed {
+            border-color: var(--success-color);
+        }
+
+        .step-card.running {
+            border-color: var(--warning-color);
+            animation: pulse 2s infinite;
+        }
+
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 1.5rem;
+        }
+
+        .step-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .step-description {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .step-features {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .feature-tag {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .step-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .step-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .step-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .config-section {
+            background: var(--gradient-card);
+            border-radius: var(--border-radius-2xl);
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(20px);
+            box-shadow: var(--shadow-lg);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .config-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--gradient-primary);
+        }
+
+        .config-section:hover {
+            border-color: var(--border-light);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .form-label i {
+            color: var(--primary-light);
+            font-size: 0.9rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 1.125rem 1rem;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius-md);
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(8px);
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-light);
+            background: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .form-control:hover {
+            border-color: var(--border-light);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .form-control::placeholder {
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        select.form-control {
+            cursor: pointer;
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .progress-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 2rem;
+            margin: 2rem 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: none;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .progress-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .progress-percentage {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--primary-color);
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            border-radius: 6px;
+            transition: width 0.5s ease;
+            width: 0%;
+            position: relative;
+        }
+
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        .progress-status {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .step-indicators {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+
+        .step-indicator {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            transition: all 0.3s ease;
+        }
+
+        .step-indicator.active {
+            background: var(--primary-color);
+            color: white;
+            transform: scale(1.2);
+        }
+
+        .step-indicator.completed {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .step-line {
+            width: 60px;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .results-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-top: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: none;
+        }
+
+        .results-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .tab-btn {
+            padding: 1rem 1.5rem;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            border-left: 4px solid;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: var(--success-color);
+            color: var(--success-color);
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border-color: var(--warning-color);
+            color: var(--warning-color);
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--error-color);
+            color: var(--error-color);
+        }
+
+        .alert-info {
+            background: rgba(6, 182, 212, 0.1);
+            border-color: var(--info-color);
+            color: var(--info-color);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: var(--border-radius-md);
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(8px);
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+            white-space: nowrap;
+            text-decoration: none;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: white;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--primary-dark);
+        }
+
+        .btn-success {
+            background: var(--gradient-success);
+            color: white;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--success-color);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning-color), #f59e0b);
+            color: white;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--warning-color);
+        }
+
+        .btn-info {
+            background: var(--gradient-accent);
+            color: white;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--info-color);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(12px);
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-xl);
+            filter: brightness(1.1);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            filter: grayscale(0.3);
+        }
+
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: currentColor;
+            animation: spin 1s linear infinite;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin: 2.5rem 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(145deg, rgba(55, 65, 81, 0.6), rgba(75, 85, 99, 0.4));
+            padding: 2rem 1.5rem;
+            border-radius: var(--border-radius-xl);
+            text-align: center;
+            border: 1px solid var(--border-color);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(12px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--gradient-primary);
+            transform: scaleX(0);
+            transition: transform 0.4s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-8px);
+            background: linear-gradient(145deg, rgba(75, 85, 99, 0.8), rgba(107, 114, 128, 0.6));
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .stat-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .stat-value {
+            font-size: 2.75rem;
+            font-weight: 900;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.02em;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .notification-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-width: 400px;
+        }
+
+        .notification {
+            background: rgba(255, 255, 255, 0.95);
+            color: #1f2937;
+            padding: 1rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-left: 4px solid;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: slideIn 0.3s ease;
+        }
+
+        .notification-success { border-color: var(--success-color); }
+        .notification-warning { border-color: var(--warning-color); }
+        .notification-error { border-color: var(--error-color); }
+        .notification-info { border-color: var(--info-color); }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 1rem;
+            }
+
+            .workflow-container {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .btn-group {
+                flex-direction: column;
+            }
+        }
+
+        /* Estilos para Gerenciamento de Sessões */
+        .sessions-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .session-item {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid var(--primary-color);
+            transition: all 0.3s ease;
+        }
+
+        .session-item:hover {
+            background: rgba(255, 255, 255, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .session-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            flex-grow: 1;
+        }
+
+        .session-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .session-status.active { background: var(--success-color); color: white; }
+        .session-status.paused { background: var(--warning-color); color: white; }
+        .session-status.completed { background: var(--info-color); color: white; }
+
+        .session-details {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        .session-progress {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            height: 6px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .session-progress-bar {
+            background: var(--primary-color);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .session-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .session-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: white;
+        }
+
+        .session-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .session-btn.continue { background: var(--success-color); }
+        .session-btn.pause { background: var(--warning-color); }
+        .session-btn.rename { background: var(--info-color); }
+        .session-btn.delete { background: var(--error-color); }
+        .session-btn.model { background: var(--secondary-color); }
+
+        .empty-sessions {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 40px 20px;
+        }
+
+        .empty-sessions i {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        /* Modal para Gerenciamento de Sessões */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            color: var(--text-primary);
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .btn-block {
+            width: 100%;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Header -->
+        <div class="header">
+            <h1><i class="fas fa-rocket"></i> ARQV30 Enhanced v3.0</h1>
+            <p>Sistema de Análise Ultra-Detalhada com Busca Massiva Real, Captura de Screenshots e IA com Ferramentas</p>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">3</div>
+                    <div class="stat-label">Etapas de Workflow</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">16</div>
+                    <div class="stat-label">Módulos de Análise</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">100%</div>
+                    <div class="stat-label">Dados Reais</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">0%</div>
+                    <div class="stat-label">Simulação</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuração -->
+        <div class="config-section">
+            <h3><i class="fas fa-cog"></i> Configuração da Análise</h3>
+            <form id="analysisForm">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label" for="segmento">
+                                <i class="fas fa-bullseye"></i> Segmento de Mercado *
+                            </label>
+                            <input type="text" id="segmento" name="segmento" class="form-control" 
+                                   placeholder="Ex: Tecnologia, Saúde, E-commerce..." required>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label" for="produto">
+                                <i class="fas fa-box"></i> Produto/Serviço
+                            </label>
+                            <input type="text" id="produto" name="produto" class="form-control"
+                                   placeholder="Nome do seu produto ou serviço">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label" for="preco">
+                                <i class="fas fa-dollar-sign"></i> Preço (R$)
+                            </label>
+                            <input type="number" id="preco" name="preco" class="form-control" 
+                                   step="0.01" placeholder="997.00">
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label" for="objetivo_receita">
+                                <i class="fas fa-chart-line"></i> Objetivo de Receita (R$)
+                            </label>
+                            <input type="number" id="objetivo_receita" name="objetivo_receita" 
+                                   class="form-control" step="0.01" placeholder="100000.00">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="publico">
+                        <i class="fas fa-users"></i> Público-Alvo Detalhado
+                    </label>
+                    <textarea id="publico" name="publico" class="form-control" rows="4"
+                              placeholder="Descreva detalhadamente seu público-alvo: dores, desejos, características demográficas..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="contexto_adicional">
+                        <i class="fas fa-plus-circle"></i> Contexto Adicional
+                    </label>
+                    <textarea id="contexto_adicional" name="contexto_adicional" class="form-control" rows="3"
+                              placeholder="Informações adicionais relevantes para a análise..."></textarea>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label" for="openrouter_model">
+                                <i class="fas fa-robot"></i> Modelo OpenRouter
+                            </label>
+                            <input type="text" id="openrouter_model" name="openrouter_model" class="form-control"
+                                   placeholder="Digite o modelo desejado (ex: anthropic/claude-3-haiku:beta)">
+                            <small class="text-muted">Modelo IA que processará a análise</small>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label class="form-label" for="session_name">
+                                <i class="fas fa-save"></i> Nome da Sessão
+                            </label>
+                            <input type="text" id="session_name" name="session_name" class="form-control"
+                                   placeholder="Nome para salvar esta análise">
+                            <small class="text-muted">Deixe em branco para gerar automaticamente</small>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Gerenciamento de Sessões -->
+        <div class="config-section">
+            <h3><i class="fas fa-history"></i> Gerenciar Sessões</h3>
+            <div class="row">
+                <div class="col-md-4">
+                    <button class="btn btn-success btn-block" onclick="saveSession()">
+                        <i class="fas fa-save"></i> Salvar Sessão
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-warning btn-block" onclick="pauseCurrentSession()" id="pauseBtn" disabled>
+                        <i class="fas fa-pause"></i> Pausar Análise
+                    </button>
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-info btn-block" onclick="showSavedSessions()">
+                        <i class="fas fa-list"></i> Sessões Salvas
+                    </button>
+                </div>
+            </div>
+
+            <!-- Lista de Sessões Salvas -->
+            <div id="savedSessions" class="sessions-container" style="margin-top: 20px;">
+                <!-- Sessões serão carregadas dinamicamente -->
+            </div>
+        </div>
+
+        <!-- Workflow Steps -->
+        <div class="workflow-container">
+            <!-- Etapa 1 -->
+            <div class="step-card" id="step1Card">
+                <div class="step-number">1</div>
+                <h3 class="step-title">Coleta Massiva Real</h3>
+                <p class="step-description">
+                    Busca massiva com rotação de APIs, extração de conteúdo viral e captura automática de screenshots
+                </p>
+                <div class="step-features">
+                    <span class="feature-tag">🔄 Rotação de APIs</span>
+                    <span class="feature-tag">📸 Screenshots Automáticos</span>
+                    <span class="feature-tag">🔥 Conteúdo Viral</span>
+                    <span class="feature-tag">🌐 Múltiplos Provedores</span>
+                </div>
+                <button class="step-btn" id="step1Btn" onclick="startStep1()">
+                    <i class="fas fa-database"></i>
+                    <span>Iniciar Coleta Massiva</span>
+                </button>
+            </div>
+
+            <!-- Etapa 2 -->
+            <div class="step-card" id="step2Card">
+                <div class="step-number">2</div>
+                <h3 class="step-title">Síntese com IA Ativa</h3>
+                <p class="step-description">
+                    IA analisa dados coletados e realiza buscas online ativas para validar e enriquecer informações
+                </p>
+                <div class="step-features">
+                    <span class="feature-tag">🤖 IA com Ferramentas</span>
+                    <span class="feature-tag">🔍 Busca Ativa</span>
+                    <span class="feature-tag">✅ Validação Online</span>
+                    <span class="feature-tag">📊 Síntese JSON</span>
+                </div>
+                <button class="step-btn" id="step2Btn" onclick="startStep2()">
+                    <i class="fas fa-brain"></i>
+                    <span>Iniciar Síntese IA</span>
+                </button>
+            </div>
+
+            <!-- Etapa 3 -->
+            <div class="step-card" id="step3Card">
+                <div class="step-number">3</div>
+                <h3 class="step-title">Geração de 16 Módulos</h3>
+                <p class="step-description">
+                    Geração automática de 16 módulos especializados e compilação do relatório final completo
+                </p>
+                <div class="step-features">
+                    <span class="feature-tag">📝 16 Módulos</span>
+                    <span class="feature-tag">🔗 Compilação</span>
+                    <span class="feature-tag">📋 Relatório Final</span>
+                    <span class="feature-tag">📄 25+ Páginas</span>
+                </div>
+                <button class="step-btn" id="step3Btn" onclick="startStep3()">
+                    <i class="fas fa-cogs"></i>
+                    <span>Gerar Módulos</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Section -->
+        <div class="progress-section" id="progressSection">
+            <div class="progress-header">
+                <div class="progress-title">
+                    <i class="fas fa-cogs fa-spin"></i>
+                    <span id="progressTitle">Workflow em Execução</span>
+                </div>
+                <div class="progress-percentage" id="progressPercentage">0%</div>
+            </div>
+
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+
+            <div class="progress-status" id="progressStatus">
+                Iniciando workflow...
+            </div>
+
+            <div class="step-indicators">
+                <div class="step-indicator" id="indicator1">1</div>
+                <div class="step-line"></div>
+                <div class="step-indicator" id="indicator2">2</div>
+                <div class="step-line"></div>
+                <div class="step-indicator" id="indicator3">3</div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+            <h3><i class="fas fa-chart-bar"></i> Resultados da Análise</h3>
+
+            <div class="results-tabs">
+                <button class="tab-btn active" onclick="switchTab('overview')">Visão Geral</button>
+                <button class="tab-btn" onclick="switchTab('modules')">16 Módulos</button>
+                <button class="tab-btn" onclick="switchTab('screenshots')">Screenshots</button>
+                <button class="tab-btn" onclick="switchTab('data')">Dados Coletados</button>
+            </div>
+
+            <div class="tab-content active" id="overviewTab">
+                <div id="overviewContent">
+                    <!-- Conteúdo da visão geral -->
+                </div>
+            </div>
+
+            <div class="tab-content" id="modulesTab">
+                <div id="modulesContent">
+                    <!-- Lista dos 16 módulos -->
+                </div>
+            </div>
+
+            <div class="tab-content" id="screenshotsTab">
+                <div id="screenshotsContent">
+                    <!-- Screenshots capturados -->
+                </div>
+            </div>
+
+            <div class="tab-content" id="dataTab">
+                <div id="dataContent">
+                    <!-- Dados brutos coletados -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="btn-group">
+
+            <button class="btn btn-secondary" onclick="resetWorkflow()">
+                <i class="fas fa-refresh"></i>
+                <span>Resetar</span>
+            </button>
+
+            <button class="btn btn-secondary" onclick="downloadResults()" id="downloadBtn" style="display: none;">
+                <i class="fas fa-download"></i>
+                <span>Download Relatório</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Notification Container -->
+    <div class="notification-container" id="notificationContainer"></div>
+
+    <!-- Modal for Session Management -->
+    <div id="sessionModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle" class="modal-title">Modal</h3>
+            </div>
+            <div id="modalBody" class="modal-body">
+                <!-- Conteúdo dinâmico -->
+            </div>
+            <div id="modalFooter" class="modal-footer">
+                <!-- Botões dinâmicos -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Estados globais
+        let currentSessionId = null;
+        let workflowRunning = false;
+        let progressInterval = null;
+
+        // ===== GERENCIAMENTO DE SESSÕES =====
+        async function saveSession() {
+            const sessionName = document.getElementById('session_name').value || 
+                `Análise ${new Date().toLocaleString('pt-BR')}`;
+
+            const segmento = document.getElementById('segmento').value;
+
+            if (!segmento.trim()) {
+                showNotification('Por favor, preencha o segmento de mercado', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/sessions/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: sessionName,
+                        segmento: segmento,
+                        produto: document.getElementById('produto').value,
+                        preco: document.getElementById('preco').value,
+                        objetivo_receita: document.getElementById('objetivo_receita').value,
+                        publico: document.getElementById('publico').value,
+                        contexto_adicional: document.getElementById('contexto_adicional').value,
+                        openrouter_model: document.getElementById('openrouter_model').value
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentSessionId = result.session_id;
+                    showNotification('Sessão "' + sessionName + '" salva com sucesso!', 'success');
+                    loadSavedSessions();
+                } else {
+                    showNotification('Erro ao salvar sessão: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao salvar sessão:', error);
+                showNotification('Erro ao salvar sessão. Verifique sua conexão.', 'error');
+            }
+        }
+
+        async function loadSavedSessions() {
+            try {
+                const response = await fetch('/api/sessions');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('Resposta não é JSON válido');
+                }
+                
+                const result = await response.json();
+                const sessions = result.sessions || result;
+
+                const container = document.getElementById('savedSessions');
+
+                if (!Array.isArray(sessions) || sessions.length === 0) {
+                    container.innerHTML = '<div class="empty-sessions"><i class="fas fa-inbox"></i><p>Nenhuma sessão salva ainda</p></div>';
+                    return;
+                }
+
+                container.innerHTML = sessions.map(session => 
+                    '<div class="session-item" data-session-id="' + session.id + '">' +
+                        '<div class="session-header">' +
+                            '<span class="session-name">' + session.name + '</span>' +
+                            '<span class="session-status ' + session.status + '">' + getStatusText(session.status) + '</span>' +
+                        '</div>' +
+                        '<div class="session-details">' +
+                            '<div><strong>Segmento:</strong> ' + (session.segmento || 'N/A') + '</div>' +
+                            '<div><strong>Query:</strong> ' + (session.query || 'N/A') + '</div>' +
+                            '<div><strong>Modelo:</strong> ' + (session.openrouter_model || 'N/A') + '</div>' +
+                            '<div><strong>Criado:</strong> ' + new Date(session.created_at).toLocaleString('pt-BR') + '</div>' +
+                        '</div>' +
+                        '<div class="session-progress">' +
+                            '<div class="session-progress-bar" style="width: ' + (session.progress_percentage || 0) + '%"></div>' +
+                        '</div>' +
+                        '<div class="session-actions">' +
+                            (session.status === 'paused' ? 
+                                '<button class="session-btn continue" onclick="continueSession(\'' + session.id + '\')">' +
+                                    '<i class="fas fa-play"></i> Continuar' +
+                                '</button>' : '') +
+                            (session.status === 'active' ? 
+                                '<button class="session-btn pause" onclick="pauseSession(\'' + session.id + '\')">' +
+                                    '<i class="fas fa-pause"></i> Pausar' +
+                                '</button>' : '') +
+                            '<button class="session-btn rename" onclick="showRenameModal(\'' + session.id + '\', \'' + escapeHtml(session.name) + '\')">' +
+                                '<i class="fas fa-edit"></i> Renomear' +
+                            '</button>' +
+                            '<button class="session-btn model" onclick="showModelModal(\'' + session.id + '\', \'' + escapeHtml(session.openrouter_model) + '\')">' +
+                                '<i class="fas fa-robot"></i> Modelo' +
+                            '</button>' +
+                            '<button class="session-btn delete" onclick="deleteSession(\'' + session.id + '\')">' +
+                                '<i class="fas fa-trash"></i> Excluir' +
+                            '</button>' +
+                        '</div>' +
+                    '</div>'
+                ).join('');
+            } catch (error) {
+                console.error('Erro ao carregar sessões:', error);
+                document.getElementById('savedSessions').innerHTML = 
+                    '<div class="alert alert-error">' +
+                        '<i class="fas fa-exclamation-circle"></i>' +
+                        'Erro ao carregar sessões: ' + error.message +
+                    '</div>';
+            }
+        }
+        
+        function getStatusText(status) {
+            switch(status) {
+                case 'active': return 'Ativa';
+                case 'paused': return 'Pausada';
+                case 'completed': return 'Concluída';
+                default: return status;
+            }
+        }
+
+        function escapeHtml(unsafe) {
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
+        // Função para mostrar sessões salvas
+        function showSavedSessions() {
+            const container = document.getElementById('savedSessions');
+            if (container.style.display === 'none' || !container.style.display) {
+                container.style.display = 'block';
+                loadSavedSessions();
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        // Continua sessão pausada
+        async function continueSession(sessionId) {
+            try {
+                const response = await fetch('/api/sessions/' + sessionId + '/continue', {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('Sessão continuada com sucesso!', 'success');
+                    currentSessionId = sessionId;
+                    
+                    // Preenche formulário com dados da sessão
+                    const sessionData = result.session_data;
+                    document.getElementById('segmento').value = sessionData.segmento || '';
+                    document.getElementById('produto').value = sessionData.produto || '';
+                    document.getElementById('preco').value = sessionData.preco || '';
+                    document.getElementById('objetivo_receita').value = sessionData.objetivo_receita || '';
+                    document.getElementById('publico').value = sessionData.publico || '';
+                    document.getElementById('contexto_adicional').value = sessionData.contexto_adicional || '';
+                    document.getElementById('openrouter_model').value = sessionData.openrouter_model || '';
+                    document.getElementById('session_name').value = sessionData.name || '';
+
+                    // Atualiza lista de sessões
+                    loadSavedSessions();
+                    
+                    // Garante que os botões estejam habilitados
+                    ensureButtonsEnabled();
+                } else {
+                    showNotification('Erro ao continuar sessão: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao continuar sessão:', error);
+                showNotification('Erro ao continuar sessão', 'error');
+            }
+        }
+
+        // Pausa sessão específica
+        async function pauseSession(sessionId) {
+            try {
+                const response = await fetch('/api/sessions/' + sessionId + '/pause', {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('Sessão pausada com sucesso!', 'success');
+                    loadSavedSessions(); // Atualiza a lista
+                } else {
+                    showNotification('Erro ao pausar sessão: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao pausar sessão:', error);
+                showNotification('Erro ao pausar sessão', 'error');
+            }
+        }
+
+        // Mostra modal para renomear
+        function showRenameModal(sessionId, currentName) {
+            const modal = document.getElementById('sessionModal');
+            document.getElementById('modalTitle').textContent = 'Renomear Sessão';
+            document.getElementById('modalBody').innerHTML = 
+                '<div class="form-group">' +
+                    '<label for="newSessionName">Novo nome:</label>' +
+                    '<input type="text" id="newSessionName" class="form-control" value="' + currentName + '">' +
+                '</div>';
+            document.getElementById('modalFooter').innerHTML = 
+                '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+                '<button class="btn btn-primary" onclick="renameSession(\'' + sessionId + '\')">Renomear</button>';
+            
+            modal.style.display = 'flex';
+        }
+
+        // Mostra modal para alterar modelo
+        function showModelModal(sessionId, currentModel) {
+            const modal = document.getElementById('sessionModal');
+            document.getElementById('modalTitle').textContent = 'Alterar Modelo OpenRouter';
+            document.getElementById('modalBody').innerHTML = 
+                '<div class="form-group">' +
+                    '<label for="newModel">Modelo:</label>' +
+                    '<input type="text" id="newModel" class="form-control" value="' + currentModel + '" placeholder="Digite o modelo desejado (ex: anthropic/claude-3-haiku:beta)">' +
+                    '<small class="text-muted">O modelo será usado nas próximas execuções desta sessão</small>' +
+                '</div>';
+            document.getElementById('modalFooter').innerHTML = 
+                '<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>' +
+                '<button class="btn btn-primary" onclick="updateSessionModel(\'' + sessionId + '\')">Atualizar</button>';
+            
+            modal.style.display = 'flex';
+        }
+
+        // Renomeia sessão
+        async function renameSession(sessionId) {
+            const newName = document.getElementById('newSessionName').value.trim();
+            if (!newName) {
+                showNotification('Nome não pode estar vazio', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/sessions/' + sessionId + '/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('Sessão renomeada com sucesso!', 'success');
+                    closeModal();
+                    loadSavedSessions(); // Atualiza a lista
+                } else {
+                    showNotification('Erro ao renomear sessão: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao renomear sessão:', error);
+                showNotification('Erro ao renomear sessão', 'error');
+            }
+        }
+
+        // Atualiza modelo da sessão
+        async function updateSessionModel(sessionId) {
+            const newModel = document.getElementById('newModel').value;
+
+            try {
+                const response = await fetch('/api/sessions/' + sessionId + '/model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: newModel })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('Modelo atualizado com sucesso!', 'success');
+                    closeModal();
+                    loadSavedSessions(); // Atualiza a lista
+                } else {
+                    showNotification('Erro ao atualizar modelo: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao atualizar modelo:', error);
+                showNotification('Erro ao atualizar modelo', 'error');
+            }
+        }
+
+        // Remove sessão
+        async function deleteSession(sessionId) {
+            if (!confirm('Tem certeza que deseja excluir esta sessão?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/sessions/' + sessionId + '/delete', {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('Sessão excluída com sucesso!', 'success');
+                    loadSavedSessions(); // Atualiza a lista
+                } else {
+                    showNotification('Erro ao excluir sessão: ' + result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Erro ao excluir sessão:', error);
+                showNotification('Erro ao excluir sessão', 'error');
+            }
+        }
+
+        // Fecha modal
+        function closeModal() {
+            document.getElementById('sessionModal').style.display = 'none';
+        }
+
+        // Gera ID único para sessão
+        function generateSessionId() {
+            return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+        
+        // Pega dados do formulário
+        function getFormData() {
+            return {
+                segmento: document.getElementById('segmento').value,
+                produto: document.getElementById('produto').value,
+                preco: document.getElementById('preco').value,
+                objetivo_receita: document.getElementById('objetivo_receita').value,
+                publico: document.getElementById('publico').value,
+                contexto_adicional: document.getElementById('contexto_adicional').value
+            };
+        }
+
+        // Inicializa funcionalidades de sessão quando a página carrega
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSavedSessions();
+            setupEventListeners();
+            ensureButtonsEnabled();
+        });
+
+        function ensureButtonsEnabled() {
+            // Garante que todos os botões das etapas estejam sempre habilitados
+            document.getElementById('step1Btn').disabled = false;
+            document.getElementById('step2Btn').disabled = false;
+            document.getElementById('step3Btn').disabled = false;
+            console.log('✅ Todos os botões das etapas habilitados');
+        }
+
+        function setupEventListeners() {
+            // Auto-save configuração
+            const form = document.getElementById('analysisForm');
+            if (form) {
+                form.addEventListener('change', saveConfiguration);
+            }
+
+            // Atalhos de teclado
+            document.addEventListener('keydown', function(e) {
+                // Ctrl+Enter para iniciar workflow completo
+                if (e.ctrlKey && e.key === 'Enter' && !workflowRunning) {
+                    e.preventDefault();
+                    startCompleteWorkflow();
+                }
+            });
+        }
+
+        function saveConfiguration() {
+            const config = getFormData();
+            localStorage.setItem('arqv30_config_v3', JSON.stringify(config));
+        }
+
+        function loadSavedConfiguration() {
+            const saved = localStorage.getItem('arqv30_config_v3');
+            if (saved) {
+                try {
+                    const config = JSON.parse(saved);
+                    Object.entries(config).forEach(([key, value]) => {
+                        const element = document.getElementById(key);
+                        if (element && value) {
+                            element.value = value;
+                        }
+                    });
+                } catch (error) {
+                    console.error('Erro ao carregar configuração:', error);
+                }
+            }
+        }
+
+        // ===== WORKFLOW STEPS =====
+        async function startStep1() {
+            const segmento = document.getElementById('segmento').value;
+            const produto = document.getElementById('produto').value;
+            const publico = document.getElementById('publico').value;
+
+            if (!segmento.trim()) {
+                showNotification('Por favor, preencha pelo menos o segmento de mercado', 'warning');
+                return;
+            }
+
+            try {
+                setStepLoading(1, true);
+                showProgressSection();
+
+                const response = await fetch('/api/workflow/step1/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        segmento: segmento,
+                        produto: produto,
+                        publico: publico
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentSessionId = result.session_id;
+                    showNotification('Etapa 1 iniciada com sucesso! Session: ' + currentSessionId, 'success');
+                    startProgressMonitoring();
+                    updateStepStatus(1, 'running');
+                    workflowRunning = true;
+                } else {
+                    showNotification('Erro na Etapa 1: ' + result.error, 'error');
+                    setStepLoading(1, false);
+                }
+            } catch (error) {
+                console.error('Erro na Etapa 1:', error);
+                showNotification('Erro ao iniciar Etapa 1', 'error');
+                setStepLoading(1, false);
+            }
+        }
+
+        async function startStep2() {
+            if (!currentSessionId) {
+                showNotification('Execute a Etapa 1 primeiro', 'warning');
+                return;
+            }
+
+            try {
+                setStepLoading(2, true);
+                showNotification('Etapa 2 iniciada: Síntese com IA...', 'info');
+                updateStepStatus(2, 'running');
+
+                const response = await fetch('/api/workflow/step2/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: currentSessionId })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Etapa 2 em andamento!', 'success');
+                    // O monitoramento cuidará da conclusão e habilitação da próxima etapa
+                } else {
+                    showNotification('Erro na Etapa 2: ' + result.error, 'error');
+                    setStepLoading(2, false);
+                    updateStepStatus(2, 'error');
+                }
+            } catch (error) {
+                console.error('Erro na Etapa 2:', error);
+                showNotification('Erro ao iniciar Etapa 2', 'error');
+                setStepLoading(2, false);
+                updateStepStatus(2, 'error');
+            }
+        }
+
+        async function startStep3() {
+            if (!currentSessionId) {
+                showNotification('Execute as etapas anteriores primeiro', 'warning');
+                return;
+            }
+
+            try {
+                setStepLoading(3, true);
+                showNotification('Etapa 3 iniciada: Gerando módulos...', 'info');
+                updateStepStatus(3, 'running');
+
+                const response = await fetch('/api/workflow/step3/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: currentSessionId })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Etapa 3 em andamento!', 'success');
+                    // O monitoramento cuidará da conclusão
+                } else {
+                    showNotification('Erro na Etapa 3: ' + result.error, 'error');
+                    setStepLoading(3, false);
+                    updateStepStatus(3, 'error');
+                }
+            } catch (error) {
+                console.error('Erro na Etapa 3:', error);
+                showNotification('Erro ao iniciar Etapa 3', 'error');
+                setStepLoading(3, false);
+                updateStepStatus(3, 'error');
+            }
+        }
+
+        function startCompleteWorkflow() {
+            if (workflowRunning) {
+                showNotification('O workflow já está em execução.', 'warning');
+                return;
+            }
+            // Simula o clique nos botões na ordem correta, se eles estiverem habilitados
+            if (document.getElementById('step1Btn').disabled === false) {
+                startStep1();
+            } else {
+                showNotification('Etapa 1 ainda não está pronta.', 'warning');
+            }
+        }
+
+        function setStepLoading(stepNumber, isLoading) {
+            const button = document.getElementById('step' + stepNumber + 'Btn');
+            const spinner = document.createElement('div');
+            spinner.className = 'loading-spinner';
+            spinner.style.display = isLoading ? 'inline-block' : 'none';
+
+            if (button) {
+                const existingSpinner = button.querySelector('.loading-spinner');
+                if (existingSpinner) {
+                    existingSpinner.remove();
+                }
+                if (isLoading) {
+                    button.insertBefore(spinner, button.firstChild);
+                }
+                button.disabled = isLoading;
+            }
+        }
+        
+        function updateStepStatus(stepNumber, status) {
+            const card = document.getElementById('step' + stepNumber + 'Card');
+            if (card) {
+                card.className = 'step-card ' + status; // Limpa classes e adiciona a nova
+            }
+            
+            const button = document.getElementById('step' + stepNumber + 'Btn');
+            if (button) {
+                if (status === 'completed') {
+                    button.disabled = false; // Mantém habilitado mesmo após conclusão
+                    const spinner = button.querySelector('.loading-spinner');
+                    if(spinner) spinner.style.display = 'none';
+                } else if (status === 'running') {
+                     // Já tratado em setStepLoading
+                } else if (status === 'error') {
+                    button.disabled = false; // Mantém habilitado mesmo com erro
+                    const spinner = button.querySelector('.loading-spinner');
+                    if(spinner) spinner.style.display = 'none';
+                }
+            }
+            updateStepIndicator(stepNumber, status);
+        }
+        
+        function updateStepIndicator(stepNumber, status) {
+            const indicator = document.getElementById('indicator' + stepNumber);
+            if (indicator) {
+                indicator.className = 'step-indicator'; // Reseta
+                if (status === 'completed') {
+                    indicator.classList.add('completed');
+                } else if (status === 'running' || status === 'active') {
+                    indicator.classList.add('active');
+                }
+            }
+        }
+
+        function showProgressSection() {
+            document.getElementById('progressSection').style.display = 'block';
+        }
+        
+        function hideProgressSection() {
+             document.getElementById('progressSection').style.display = 'none';
+        }
+
+        function updateProgressDisplay(status) {
+            const progressTitle = document.getElementById('progressTitle');
+            const progressPercentage = document.getElementById('progressPercentage');
+            const progressBar = document.getElementById('progressBar');
+            const progressStatus = document.getElementById('progressStatus');
+            
+            let currentStep = status.current_step || 0;
+            let percentage = status.progress_percentage || 0;
+            let message = status.message || 'Processando...';
+
+            // Atualiza baseado no status mais recente
+            if (status.step_status?.step1 === 'completed') {
+                currentStep = Math.max(currentStep, 1);
+                percentage = Math.max(percentage, 33);
+                message = status.message || 'Etapa 1 concluída';
+            }
+            if (status.step_status?.step2 === 'completed') {
+                currentStep = Math.max(currentStep, 2);
+                percentage = Math.max(percentage, 66);
+                message = status.message || 'Etapa 2 concluída';
+            }
+            if (status.step_status?.step3 === 'completed') {
+                currentStep = Math.max(currentStep, 3);
+                percentage = Math.max(percentage, 100);
+                message = status.message || 'Etapa 3 concluída';
+            }
+            
+            progressTitle.innerHTML = `<i class="fas fa-cogs ${currentStep === 3 && percentage < 100 ? 'fa-spin' : ''}"></i> ${message}`;
+            progressPercentage.textContent = percentage + '%';
+            progressBar.style.width = percentage + '%';
+            progressStatus.textContent = message;
+        }
+
+        function startProgressMonitoring() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+
+            progressInterval = setInterval(async () => {
+                if (!currentSessionId) return;
+
+                try {
+                    const response = await fetch('/api/workflow/status/' + currentSessionId);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const contentType = response.headers.get('content-type');
+                    if (!contentType || !contentType.includes('application/json')) {
+                        console.warn('Resposta não é JSON válido, tentando texto...');
+                        const text = await response.text();
+                        console.log('Resposta recebida:', text.substring(0, 200));
+                        return; // Pula esta iteração
+                    }
+                    
+                    const status = await response.json();
+                    updateProgressDisplay(status);
+
+                    // Habilita botões baseado no progresso
+                    if (status.step_status && status.step_status.step1 === 'completed') {
+                        updateStepStatus(1, 'completed');
+                        enableStepButton(2);
+                        console.log('✅ Etapa 1 concluída - habilitando Etapa 2');
+                    }
+
+                    if (status.step_status && status.step_status.step2 === 'completed') {
+                        updateStepStatus(2, 'completed');
+                        enableStepButton(3);
+                        console.log('✅ Etapa 2 concluída - habilitando Etapa 3');
+                    }
+
+                    if (status.step_status && status.step_status.step3 === 'completed') {
+                        updateStepStatus(3, 'completed');
+                        console.log('✅ Etapa 3 concluída - workflow finalizado');
+                        clearInterval(progressInterval);
+                        showNotification('Workflow concluído com sucesso!', 'success');
+                        showResultsSection();
+                        workflowRunning = false;
+                    }
+                } catch (error) {
+                    console.error('Erro no monitoramento:', error);
+                }
+            }, 3000);
+        }
+
+        function enableStepButton(stepNumber) {
+            const button = document.querySelector('#step' + stepNumber + 'Btn');
+            if (button) {
+                button.disabled = false;
+                button.classList.remove('disabled'); // Remove classe disabled se houver
+                const spinner = button.querySelector('.loading-spinner');
+                if (spinner) spinner.style.display = 'none'; // Esconde spinner se estiver visível
+                console.log('🔓 Botão da Etapa ' + stepNumber + ' habilitado');
+            }
+        }
+
+        function showResultsSection() {
+            document.getElementById('resultsSection').style.display = 'block';
+            document.getElementById('downloadBtn').style.display = 'inline-flex';
+        }
+        
+        function hideResultsSection() {
+             document.getElementById('resultsSection').style.display = 'none';
+             document.getElementById('downloadBtn').style.display = 'none';
+        }
+
+        async function showResults() {
+            if (!currentSessionId) {
+                showNotification('Nenhuma sessão ativa para carregar resultados', 'warning');
+                return;
+            }
+            try {
+                const response = await fetch('/api/workflow/results/' + currentSessionId);
+                const results = await response.json();
+
+                showResultsSection();
+
+                // Popula visão geral
+                populateOverview(results);
+
+                // Popula módulos
+                populateModules(results);
+
+                // Popula screenshots
+                populateScreenshots(results);
+
+                // Popula dados
+                populateData(results);
+
+            } catch (error) {
+                console.error('Erro ao carregar resultados:', error);
+                showNotification('Erro ao carregar resultados', 'error');
+            }
+        }
+
+        function populateOverview(results) {
+            const content = document.getElementById('overviewContent');
+            const modulesGenerated = results.modules_generated || 0;
+            const screenshotsCaptured = results.screenshots_captured || 0;
+            const availableFiles = results.available_files ? results.available_files.length : 0;
+            const finalReportAvailable = results.final_report_available ? 'SIM' : 'NÃO';
+
+            content.innerHTML = `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">${modulesGenerated}</div>
+                        <div class="stat-label">Módulos Gerados</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${screenshotsCaptured}</div>
+                        <div class="stat-label">Screenshots</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${availableFiles}</div>
+                        <div class="stat-label">Arquivos Gerados</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">${finalReportAvailable}</div>
+                        <div class="stat-label">Relatório Final</div>
+                    </div>
+                </div>
+
+                ${results.final_report_available ? `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i>
+                        <div>
+                            <strong>Relatório Final Disponível!</strong><br>
+                            Análise completa com 16 módulos especializados gerada com sucesso.
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+        }
+
+        function populateModules(results) {
+            const content = document.getElementById('modulesContent');
+            const modules = results.modules_list || [];
+
+            if (modules.length === 0) {
+                content.innerHTML = '<p>Nenhum módulo gerado ainda.</p>';
+                return;
+            }
+
+            const modulesList = modules.map((module, index) => `
+                <div class="alert alert-success">
+                    <i class="fas fa-file-alt"></i>
+                    <div>
+                        <strong>${module.replace('.md', '').replace('_', ' ').toUpperCase()}</strong><br>
+                        <small>Módulo ${index + 1}/16 - Gerado com sucesso</small>
+                    </div>
+                </div>
+            `).join('');
+
+            content.innerHTML = `
+                <h4>Módulos Gerados (${modules.length}/16)</h4>
+                ${modulesList}
+            `;
+        }
+
+        function populateScreenshots(results) {
+            const content = document.getElementById('screenshotsContent');
+            const screenshots = results.screenshots_list || [];
+
+            if (screenshots.length === 0) {
+                content.innerHTML = '<p>Nenhum screenshot capturado.</p>';
+                return;
+            }
+
+            const screenshotsList = screenshots.map((screenshot, index) => `
+                <div class="alert alert-info">
+                    <i class="fas fa-image"></i>
+                    <div>
+                        <strong>Screenshot ${index + 1}</strong><br>
+                        <small>${screenshot}</small>
+                    </div>
+                </div>
+            `).join('');
+
+            content.innerHTML = `
+                <h4>Screenshots Capturados (${screenshots.length})</h4>
+                <p>Evidências visuais do conteúdo viral identificado durante a busca.</p>
+                ${screenshotsList}
+            `;
+        }
+
+        function populateData(results) {
+            const content = document.getElementById('dataContent');
+            const files = results.available_files || [];
+
+            const filesList = files.map(file => `
+                <div class="alert alert-secondary">
+                    <i class="fas fa-file"></i>
+                    <div>
+                        <strong>${file.name}</strong><br>
+                        <small>Tipo: ${file.type.toUpperCase()} • Tamanho: ${formatFileSize(file.size)}</small>
+                    </div>
+                </div>
+            `).join('');
+
+            content.innerHTML = `
+                <h4>Arquivos Gerados (${files.length})</h4>
+                ${filesList}
+            `;
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            event.target.classList.add('active');
+            document.getElementById(`${tabName}Tab`).classList.add('active');
+        }
+
+        function resetWorkflow() {
+            if (confirm('Tem certeza que deseja resetar o workflow?')) {
+                currentSessionId = null;
+                workflowRunning = false;
+                if (progressInterval) clearInterval(progressInterval);
+                progressInterval = null;
+
+                hideProgressSection();
+                hideResultsSection();
+                
+                // Reset step cards and buttons
+                updateStepStatus(1, '');
+                updateStepStatus(2, '');
+                updateStepStatus(3, '');
+                
+                // Mantém todos os botões sempre habilitados
+                document.getElementById('step1Btn').disabled = false;
+                document.getElementById('step2Btn').disabled = false;
+                document.getElementById('step3Btn').disabled = false;
+
+                // Limpa campos do formulário (opcional, pode ser sobrescrito ao carregar config)
+                document.getElementById('analysisForm').reset();
+                
+                showNotification('Workflow resetado', 'info');
+            }
+        }
+
+        async function downloadResults() {
+            if (!currentSessionId) {
+                showNotification('Nenhuma sessão ativa para download', 'warning');
+                return;
+            }
+
+            try {
+                window.open('/api/workflow/download/' + currentSessionId + '/final_report', '_blank');
+                showNotification('Download iniciado', 'success');
+            } catch (error) {
+                showNotification('Erro no download', 'error');
+            }
+        }
+
+        function showNotification(message, type = 'info', duration = 5000) {
+            const container = document.getElementById('notificationContainer');
+
+            const notification = document.createElement('div');
+            notification.className = `notification notification-${type}`;
+
+            const icons = {
+                success: 'fas fa-check-circle',
+                warning: 'fas fa-exclamation-triangle',
+                error: 'fas fa-exclamation-circle',
+                info: 'fas fa-info-circle'
+            };
+
+            notification.innerHTML = `
+                <i class="${icons[type]}"></i>
+                <span>${message}</span>
+            `;
+
+            container.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, duration);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+
+</body>
+</html>
