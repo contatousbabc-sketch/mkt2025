@@ -33,7 +33,7 @@ class LocalFileManager:
             'avatars', 'drivers_mentais', 'provas_visuais', 'anti_objecao',
             'pre_pitch', 'predicoes_futuro', 'posicionamento', 'concorrencia',
             'palavras_chave', 'metricas', 'funil_vendas', 'plano_acao',
-            'insights', 'pesquisa_web', 'completas', 'metadata', 'sessions'
+            'insights', 'pesquisa_web', 'completas', 'metadata'
         ]
         
         # Cria diretório base
@@ -43,75 +43,10 @@ class LocalFileManager:
         for subdir in subdirs:
             os.makedirs(os.path.join(self.base_dir, subdir), exist_ok=True)
     
-    def save_session_data(self, session_id: str, session_data: Dict[str, Any]) -> bool:
-        """Salva dados da sessão"""
-        
-        try:
-            self._ensure_directory_structure()
-            
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"session_{session_id}_{timestamp}.json"
-            file_path = os.path.join(self.base_dir, 'sessions', filename)
-            
-            # Adiciona timestamp aos dados da sessão
-            session_data_with_meta = {
-                'session_id': session_id,
-                'timestamp': timestamp,
-                'saved_at': datetime.now().isoformat(),
-                'data': session_data
-            }
-            
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(session_data_with_meta, f, ensure_ascii=False, indent=2)
-            
-            logger.info(f"✅ Dados da sessão salvos: {session_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erro ao salvar dados da sessão {session_id}: {str(e)}")
-            return False
-    
-    def load_session_data(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Carrega dados da sessão"""
-        
-        try:
-            sessions_dir = os.path.join(self.base_dir, 'sessions')
-            
-            if not os.path.exists(sessions_dir):
-                logger.warning(f"⚠️ Diretório de sessões não existe: {sessions_dir}")
-                return None
-            
-            # Busca pelo arquivo de sessão mais recente
-            session_files = []
-            for filename in os.listdir(sessions_dir):
-                if filename.startswith(f"session_{session_id}") and filename.endswith('.json'):
-                    file_path = os.path.join(sessions_dir, filename)
-                    session_files.append((file_path, os.path.getmtime(file_path)))
-            
-            if not session_files:
-                logger.warning(f"⚠️ Nenhum arquivo de sessão encontrado para: {session_id}")
-                return None
-            
-            # Ordena por data de modificação (mais recente primeiro)
-            session_files.sort(key=lambda x: x[1], reverse=True)
-            most_recent_file = session_files[0][0]
-            
-            with open(most_recent_file, 'r', encoding='utf-8') as f:
-                session_data = json.load(f)
-            
-            logger.info(f"✅ Dados da sessão carregados: {session_id}")
-            return session_data.get('data', {})
-            
-        except Exception as e:
-            logger.error(f"❌ Erro ao carregar dados da sessão {session_id}: {str(e)}")
-            return None
-    
     def save_analysis_locally(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
         """Salva análise completa em arquivos locais organizados"""
         
         try:
-            self._ensure_directory_structure()
-            
             # Gera ID único para a análise
             analysis_id = str(uuid.uuid4())
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -311,73 +246,6 @@ class LocalFileManager:
             logger.error(f"❌ Erro ao listar análises locais: {str(e)}")
             return []
     
-    def list_sessions(self) -> List[Dict[str, Any]]:
-        """Lista sessões salvas"""
-        
-        try:
-            sessions = []
-            sessions_dir = os.path.join(self.base_dir, 'sessions')
-            
-            if not os.path.exists(sessions_dir):
-                return []
-            
-            for filename in os.listdir(sessions_dir):
-                if filename.startswith('session_') and filename.endswith('.json'):
-                    file_path = os.path.join(sessions_dir, filename)
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            session_data = json.load(f)
-                        
-                        sessions.append({
-                            'session_id': session_data.get('session_id'),
-                            'timestamp': session_data.get('timestamp'),
-                            'saved_at': session_data.get('saved_at'),
-                            'filename': filename,
-                            'size': os.path.getsize(file_path)
-                        })
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Erro ao ler sessão {filename}: {str(e)}")
-                        continue
-            
-            # Ordena por data de criação (mais recente primeiro)
-            sessions.sort(key=lambda x: x.get('saved_at', ''), reverse=True)
-            
-            return sessions
-            
-        except Exception as e:
-            logger.error(f"❌ Erro ao listar sessões: {str(e)}")
-            return []
-    
-    def delete_session_data(self, session_id: str) -> bool:
-        """Remove dados da sessão"""
-        
-        try:
-            sessions_dir = os.path.join(self.base_dir, 'sessions')
-            deleted_files = 0
-            
-            if os.path.exists(sessions_dir):
-                for filename in os.listdir(sessions_dir):
-                    if filename.startswith(f"session_{session_id}") and filename.endswith('.json'):
-                        file_path = os.path.join(sessions_dir, filename)
-                        try:
-                            os.remove(file_path)
-                            deleted_files += 1
-                            logger.info(f"🗑️ Sessão removida: {filename}")
-                        except Exception as e:
-                            logger.error(f"❌ Erro ao remover {filename}: {str(e)}")
-            
-            if deleted_files > 0:
-                logger.info(f"✅ Sessão {session_id} removida: {deleted_files} arquivos")
-                return True
-            else:
-                logger.warning(f"⚠️ Nenhum arquivo de sessão encontrado para: {session_id}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ Erro ao deletar sessão {session_id}: {str(e)}")
-            return False
-    
     def get_analysis_directory(self, analysis_id: str) -> Optional[str]:
         """Obtém diretório de uma análise específica"""
         
@@ -471,64 +339,6 @@ class LocalFileManager:
             logger.error(f"❌ Erro ao carregar seção {section_name} da análise {analysis_id}: {str(e)}")
             return None
     
-    def load_complete_analysis(self, analysis_id: str) -> Optional[Dict[str, Any]]:
-        """Carrega análise completa"""
-        
-        try:
-            completas_dir = os.path.join(self.base_dir, 'completas')
-            
-            if not os.path.exists(completas_dir):
-                return None
-            
-            # Busca arquivo da análise completa
-            for filename in os.listdir(completas_dir):
-                if analysis_id[:8] in filename and filename.endswith('_completa.json'):
-                    file_path = os.path.join(completas_dir, filename)
-                    
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        return json.load(f)
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Erro ao carregar análise completa {analysis_id}: {str(e)}")
-            return None
-    
-    def backup_analysis(self, analysis_id: str, backup_dir: str) -> bool:
-        """Cria backup de uma análise específica"""
-        
-        try:
-            import shutil
-            
-            # Cria diretório de backup
-            os.makedirs(backup_dir, exist_ok=True)
-            
-            backed_up_files = 0
-            
-            # Copia todos os arquivos relacionados à análise
-            for root, dirs, files in os.walk(self.base_dir):
-                for file in files:
-                    if analysis_id[:8] in file:
-                        source_path = os.path.join(root, file)
-                        
-                        # Mantém estrutura de diretórios
-                        relative_path = os.path.relpath(source_path, self.base_dir)
-                        backup_path = os.path.join(backup_dir, relative_path)
-                        
-                        # Cria diretório de destino se necessário
-                        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
-                        
-                        # Copia arquivo
-                        shutil.copy2(source_path, backup_path)
-                        backed_up_files += 1
-            
-            logger.info(f"✅ Backup criado: {backed_up_files} arquivos copiados para {backup_dir}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Erro ao criar backup da análise {analysis_id}: {str(e)}")
-            return False
-    
     def get_storage_stats(self) -> Dict[str, Any]:
         """Obtém estatísticas de armazenamento"""
         
@@ -571,44 +381,6 @@ class LocalFileManager:
         except Exception as e:
             logger.error(f"❌ Erro ao obter estatísticas: {str(e)}")
             return {}
-    
-    def cleanup_old_files(self, days_old: int = 30) -> Dict[str, Any]:
-        """Remove arquivos mais antigos que X dias"""
-        
-        try:
-            cutoff_time = time.time() - (days_old * 24 * 60 * 60)
-            cleaned_files = []
-            total_size_cleaned = 0
-            
-            for root, dirs, files in os.walk(self.base_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    try:
-                        if os.path.getmtime(file_path) < cutoff_time:
-                            file_size = os.path.getsize(file_path)
-                            os.remove(file_path)
-                            cleaned_files.append({
-                                'name': file,
-                                'path': file_path,
-                                'size': file_size
-                            })
-                            total_size_cleaned += file_size
-                            
-                    except Exception as e:
-                        logger.error(f"❌ Erro ao processar arquivo {file}: {str(e)}")
-                        continue
-            
-            logger.info(f"🧹 Limpeza concluída: {len(cleaned_files)} arquivos removidos")
-            
-            return {
-                'cleaned_files': len(cleaned_files),
-                'total_size_cleaned_mb': round(total_size_cleaned / (1024 * 1024), 2),
-                'files': cleaned_files
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Erro na limpeza de arquivos: {str(e)}")
-            return {'error': str(e)}
 
 # Instância global
 local_file_manager = LocalFileManager()

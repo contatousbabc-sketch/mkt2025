@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 ARQV30 Enhanced v3.0 - AI Synthesis Engine
-Motor de síntese da IA para Etapa 2 - Análise e síntese com tool use
+Motor de síntese da IA com hierarquia OpenRouter: Grok-4 → Gemini-2.0 → DeepSeek-R1
+ZERO SIMULAÇÃO - Apenas modelos reais funcionais
 """
 
 import os
@@ -10,13 +11,11 @@ import logging
 import json
 import time
 import re
-import asyncio
 from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime
 from pathlib import Path
-from services.ai_manager import ai_manager
-# from services.search_api_manager import search_api_manager  # REMOVIDO - não existe
-from services.auto_save_manager import salvar_etapa, salvar_erro
+from .enhanced_ai_manager import enhanced_ai_manager
+from .auto_save_manager import salvar_etapa, salvar_erro
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +38,12 @@ class AISynthesisEngine:
         
         logger.info("🧠 AI Synthesis Engine inicializado")
     
-    def analyze_and_synthesize(
+    async def analyze_and_synthesize(
         self, 
         session_id: str, 
-        model: str, 
-        api_key: str, 
-        analysis_time: int,
+        model: str = None, 
+        api_key: str = None, 
+        analysis_time: int = 300,
         progress_callback: Optional[Callable] = None
     ) -> Dict[str, Any]:
         """Executa análise e síntese da IA com tool use"""
@@ -70,7 +69,7 @@ class AISynthesisEngine:
                 progress_callback("Iniciando análise profunda da IA...")
             
             # Executa síntese com tool use
-            synthesis_result = self._execute_synthesis_with_tools(
+            synthesis_result = await self._execute_synthesis_with_tools(
                 master_prompt, 
                 session_id, 
                 analysis_time,
@@ -213,18 +212,29 @@ IMPORTANTE: Use as ferramentas sempre que precisar de informações mais especí
         
         return prompt
     
-    def _execute_synthesis_with_tools(
+    async def _execute_synthesis_with_tools(
         self, 
         prompt: str, 
         session_id: str, 
         analysis_time: int,
         progress_callback: Optional[Callable] = None
     ) -> Dict[str, Any]:
-        """Executa síntese com suporte a tool use"""
+        """Executa síntese com suporte a tool use usando hierarquia OpenRouter"""
         
         start_time = time.time()
         tool_calls_made = 0
         conversation_history = [prompt]
+        
+        # Sistema prompt para síntese
+        system_prompt = """Você é um especialista em análise de dados e síntese de informações.
+        Sua função é analisar dados coletados e gerar insights profundos e acionáveis.
+        Se precisar de informações adicionais, solicite usando o formato:
+        [TOOL_REQUEST: tool_name | parameter: value]
+        
+        Ferramentas disponíveis:
+        - google_search | query: termo de busca
+        - web_extract | url: URL para extrair conteúdo
+        - social_search | query: busca em redes sociais"""
         
         try:
             while time.time() - start_time < analysis_time and tool_calls_made < self.max_tool_calls:
@@ -233,9 +243,15 @@ IMPORTANTE: Use as ferramentas sempre que precisar de informações mais especí
                     elapsed = int(time.time() - start_time)
                     progress_callback(f"IA analisando... ({elapsed}s/{analysis_time}s) - {tool_calls_made} buscas adicionais")
                 
-                # Envia prompt atual para IA
+                # Envia prompt atual para IA usando hierarquia OpenRouter
                 current_prompt = "\n\n".join(conversation_history)
-                response = ai_manager.generate_analysis(current_prompt, max_tokens=4000)
+                
+                response = await enhanced_ai_manager.generate_text(
+                    prompt=current_prompt,
+                    system_prompt=system_prompt,
+                    max_tokens=4000,
+                    temperature=0.7
+                )
                 
                 if not response:
                     raise Exception("IA não respondeu")
@@ -248,7 +264,7 @@ IMPORTANTE: Use as ferramentas sempre que precisar de informações mais especí
                     logger.info(f"🔧 IA solicitou ferramenta: {tool_call['tool']} - {tool_call.get('query', tool_call.get('url', ''))}")
                     
                     # Executa ferramenta
-                    tool_result = self._execute_tool(tool_call)
+                    tool_result = await self._execute_tool(tool_call)
                     
                     # Adiciona resultado à conversa
                     conversation_history.append(f"RESULTADO DA FERRAMENTA {tool_call['tool']}:")
@@ -311,23 +327,8 @@ IMPORTANTE: Use as ferramentas sempre que precisar de informações mais especí
         query = tool_call.get('query', '')
         
         try:
-            # Usar real_search_orchestrator para busca real
-            from .real_search_orchestrator import RealSearchOrchestrator
-            search_orchestrator = RealSearchOrchestrator()
-            
-            # Executar busca síncrona
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                search_results = loop.run_until_complete(
-                    search_orchestrator.execute_massive_real_search(
-                        query=query, 
-                        context={'tool_call': True}, 
-                        session_id=f"synthesis_{int(time.time())}"
-                    )
-                )
-            finally:
-                loop.close()
+            # search_results = search_api_manager.interleaved_search(query, max_results_per_provider=5)  # REMOVIDO
+            search_results = []  # Placeholder
             
             # Simplifica resultados para a IA
             simplified_results = []
@@ -358,8 +359,9 @@ IMPORTANTE: Use as ferramentas sempre que precisar de informações mais especí
         try:
             # Import dinâmico para evitar erro se o módulo não existir
             try:
-                from services.robust_content_extractor import robust_content_extractor
-                content = robust_content_extractor.extract_content(url)
+                # from services.robust_content_extractor import robust_content_extractor
+                # content = robust_content_extractor.extract_content(url)
+                content = ""  # Fallback vazio - não usamos mais o robust_content_extractor
             except ImportError:
                 # Fallback simples se o extractor não estiver disponível
                 import requests

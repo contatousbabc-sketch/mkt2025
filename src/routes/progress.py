@@ -140,15 +140,23 @@ class ProgressTracker:
                                     break
 
                         queue.put(progress_data)
+                    except (OSError, RuntimeError) as e:
+                        logger.error(f"Erro de sistema ao adicionar à queue: {e}")
                     except Exception as e:
-                        logger.error(f"Erro ao adicionar à queue: {e}")
+                        logger.error(f"Erro inesperado ao adicionar à queue: {e}")
 
                 logger.info(f"📊 Progress {self.session_id}: Step {self.current_step}/{self.total_steps} - {message}")
 
                 return progress_data
 
+        except (ValueError, TypeError) as e:
+            logger.error(f"Erro de dados ao atualizar progresso: {e}")
+            return None
+        except (OSError, RuntimeError) as e:
+            logger.error(f"Erro de sistema ao atualizar progresso: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Erro ao atualizar progresso: {e}")
+            logger.error(f"Erro inesperado ao atualizar progresso: {e}")
             return None
 
     def complete(self):
@@ -257,7 +265,47 @@ def start_tracking():
             'message': str(e)
         }), 500
 
-@progress_bp.route('/<session_id>', methods=['GET'])
+# ROTAS ESPECÍFICAS PRIMEIRO (sem parâmetros)
+@progress_bp.route('/active_sessions', methods=['GET'])
+def get_active_sessions():
+    """Lista sessões ativas de progresso"""
+    logger.info("🎯 ROTA /active_sessions CHAMADA!")
+    try:
+        active = []
+        current_time = time.time()
+
+        for session_id, tracker in progress_sessions.items():
+            try:
+                progress_data = tracker.get_current_status()
+                logger.info(f"🔍 Sessão {session_id}: is_active={progress_data.get('is_active') if progress_data else 'None'}")
+                if progress_data and progress_data.get('is_active', False):
+                    active.append({
+                        'session_id': session_id,
+                        'current_step': progress_data.get('current_step', 0),
+                        'total_steps': progress_data.get('total_steps', 13),
+                        'status': progress_data.get('status', 'unknown'),
+                        'last_update': progress_data.get('timestamp', ''),
+                        'elapsed_time': current_time - progress_data.get('start_time', current_time)
+                    })
+            except Exception as e:
+                logger.error(f"Erro ao processar sessão {session_id}: {e}")
+
+        return jsonify({
+            'success': True,
+            'active_sessions': active,
+            'total_active': len(active),
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao listar sessões ativas: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ROTAS COM PARÂMETROS DEPOIS
+@progress_bp.route('/progress/<session_id>', methods=['GET'])
 def get_progress_main(session_id):
     """Obtém progresso atual - ROTA PRINCIPAL"""
     try:
@@ -299,10 +347,7 @@ def get_progress_alt(session_id):
     """Rota alternativa para progresso"""
     return get_progress_main(session_id)
 
-@progress_bp.route('/session/<session_id>', methods=['GET'])
-def get_session_progress(session_id):
-    """Rota de sessão para progresso"""
-    return get_progress_main(session_id)
+
 
 @progress_bp.route('/poll/<session_id>', methods=['GET'])
 def poll_updates(session_id):
@@ -484,44 +529,7 @@ def get_detailed_logs_alt(session_id):
     """Rota alternativa para logs detalhados"""
     return get_detailed_logs(session_id)
 
-@progress_bp.route('/active_sessions', methods=['GET'])
-def get_active_sessions():
-    """Lista sessões ativas de progresso"""
-    try:
-        active = []
-        current_time = time.time()
 
-        with progress_lock:
-            for session_id, tracker in progress_sessions.items():
-                try:
-                    active.append({
-                        'session_id': session_id,
-                        'current_step': tracker.current_step,
-                        'total_steps': tracker.total_steps,
-                        'percentage': round((tracker.current_step / tracker.total_steps) * 100, 2),
-                        'elapsed_time': round(current_time - tracker.start_time, 2),
-                        'is_complete': tracker.is_complete,
-                        'is_active': tracker.is_active,
-                        'last_message': tracker.current_message,
-                        'last_update': datetime.fromtimestamp(tracker.last_update).isoformat()
-                    })
-                except Exception as e:
-                    logger.error(f"Erro ao processar sessão {session_id}: {e}")
-
-        return jsonify({
-            'success': True,
-            'active_sessions': active,
-            'total_active': len(active),
-            'timestamp': datetime.now().isoformat()
-        })
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao listar sessões: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': 'Erro interno',
-            'message': str(e)
-        }), 500
 
 @progress_bp.route('/cleanup', methods=['POST'])
 def cleanup_sessions():
@@ -573,9 +581,9 @@ def cleanup_sessions():
             'message': str(e)
         }), 500
 
-@progress_bp.route('/progress_sessions_files', methods=['GET'])
+@progress_bp.route('/progress_sessions', methods=['GET'])
 def get_sessions_from_files():
-    """Lista todas as sessões de progresso disponíveis (de arquivos)"""
+    """Lista todas as sessões disponíveis (de arquivos)"""
     try:
         # Lista arquivos de progresso
         progress_dir = os.path.join('relatorios_intermediarios', 'logs')
@@ -605,7 +613,7 @@ def get_sessions_from_files():
         logger.error(f"Erro ao carregar sessões: {e}")
         return jsonify({'error': str(e)}), 500
 
-@progress_bp.route('/sessions/clear', methods=['POST'])
+@progress_bp.route('/progress_sessions/clear', methods=['POST'])
 def clear_sessions_from_files():
     """Limpa todos os arquivos de sessões antigas"""
     try:
@@ -650,9 +658,9 @@ def get_status():
         logger.error(f"Erro ao obter status: {e}")
         return jsonify({'error': str(e)}), 500
 
-@progress_bp.route('/progress_sessions', methods=['GET'])
+@progress_bp.route('/progress_sessions_all', methods=['GET'])
 def get_sessions():
-    """Obtém lista de sessões de progresso disponíveis"""
+    """Obtém lista de sessões disponíveis"""
     try:
         sessions = []
         current_time = time.time()
@@ -708,7 +716,7 @@ def get_sessions():
         logger.error(f"Erro ao carregar sessões: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@progress_bp.route('/sessions/clear', methods=['POST'])
+@progress_bp.route('/progress_sessions_all/clear', methods=['POST'])
 def clear_sessions():
     """Limpa todas as sessões"""
     try:
@@ -751,70 +759,6 @@ def clear_sessions():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@progress_bp.route('/progress/<session_id>', methods=['GET'])
-def get_progress(session_id: str):
-    """Retorna o progresso atual de uma sessão"""
-
-    try:
-        # Busca progresso no dicionário global
-        if session_id in progress_sessions: # Check if session_id exists in progress_sessions
-            tracker = progress_sessions[session_id]
-            progress_data = tracker.get_current_status() # Use the method to get status
-
-            return jsonify({
-                'success': True,
-                'session_id': session_id,
-                'percentage': progress_data.get('percentage', 0),
-                'current_step': progress_data.get('current_step', 'Iniciando...'),
-                'total_steps': progress_data.get('total_steps', 13),
-                'estimated_time': progress_data.get('estimated_remaining', ''), # Use estimated_remaining for estimated time
-                'completed': progress_data.get('is_complete', False), # Use is_complete
-                'error': progress_data.get('error', None)
-            })
-
-        # Se não encontrou no dicionário, busca nos arquivos salvos
-        if auto_save_manager is None:
-            logger.error("auto_save_manager não está disponível. Não é possível buscar progresso de arquivos.")
-            return jsonify({'error': 'Serviço de salvamento automático indisponível'}), 500
-
-        # Busca arquivos de progresso da sessão
-        try:
-            # Corrige o problema de atributo ausente e o nome do método
-            progress_files = auto_save_manager.listar_etapas_salvas(session_id)
-            progress_data = []
-
-            for file_path in progress_files:
-                if 'progresso' in file_path:
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                            progress_data.append({
-                                'timestamp': file_path.split('_')[-1].replace('.txt', ''),
-                                'content': content
-                            })
-                    except Exception as file_error:
-                        logger.error(f"Erro ao ler arquivo {file_path}: {file_error}")
-
-            if progress_data:
-                return jsonify({
-                    'session_id': session_id,
-                    'progress_entries': progress_data,
-                    'total_entries': len(progress_data)
-                })
-            else:
-                return jsonify({'error': 'Progresso não encontrado', 'session_id': session_id})
-
-        except Exception as file_error:
-            logger.error(f"Erro ao acessar arquivos de progresso: {file_error}")
-            return jsonify({
-                'error': 'Progresso não encontrado',
-                'session_id': session_id,
-                'status': 'no_progress_data'
-            })
-
-    except Exception as e:
-        logger.error(f"Erro ao buscar progresso da sessão {session_id}: {str(e)}")
-        return jsonify({'error': f'Erro interno: {str(e)}'}), 500
 
 # Inicialização do sistema
 logger.info("✅ Sistema de progresso inicializado com TODAS as rotas corrigidas")

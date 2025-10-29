@@ -41,31 +41,28 @@ class MassiveSearchEngine:
 
     async def execute_massive_search(self, produto: str, publico_alvo: str, session_id: str, **kwargs) -> Dict[str, Any]:
         """
-        Executa busca massiva até atingir 300KB mínimo
-        Salva em RES_BUSCA_[PRODUTO].json
-
-        Aceita **kwargs para evitar erros com argumentos inesperados (ex: 'query').
+        Executa busca massiva ILIMITADA com salvamento simultâneo
+        Integração total com Auto Save Manager - SEM LIMITES DE TOKENS
         """
         # Logar argumentos inesperados para depuração
         if kwargs:
             logger.warning(f"⚠️ Argumentos inesperados recebidos e ignorados: {list(kwargs.keys())}")
 
+        start_time = time.time()
+        TIME_LIMIT_SECONDS = 4 * 60  # 10 minutos
+
         try:
-            logger.info(f"🚀 INICIANDO BUSCA MASSIVA: {produto}")
+            logger.info(f"🚀 INICIANDO BUSCA MASSIVA ILIMITADA: {produto} (Limite de tempo: {TIME_LIMIT_SECONDS/60} minutos)")
 
-            # Arquivo de resultado
-            produto_clean = produto.replace(' ', '_').replace('/', '_')
-            resultado_file = os.path.join(self.data_dir, f"RES_BUSCA_{produto_clean.upper()}.json")
-
-            # Estrutura de dados massiva
+            # Estrutura de dados massiva - SEM LIMITES
             massive_data = {
                 'produto': produto,
                 'publico_alvo': publico_alvo,
                 'session_id': session_id,
                 'timestamp_inicio': datetime.now().isoformat(),
                 'busca_massiva': {
-                    'alibaba_websailor_results': [],  # ALIBABA WebSailor
-                    'real_search_orchestrator_results': []  # Real Search Orchestrator
+                    'alibaba_websailor_results': [],
+                    'real_search_orchestrator_results': []
                 },
                 'viral_content': [],
                 'marketing_insights': [],
@@ -73,27 +70,31 @@ class MassiveSearchEngine:
                 'social_media_data': [],
                 'content_analysis': [],
                 'trend_analysis': [],
+                'consolidado_etapa1': {},  # NOVO: Consolidado para IA da etapa 2
                 'metadata': {
                     'total_searches': 0,
                     'apis_used': [],
                     'size_kb': 0,
-                    'target_size_kb': self.min_size_kb
+                    'sem_limites': True,  # NOVO: Flag indicando sem limites
+                    'target_size_kb': 'ILIMITADO'
                 }
             }
 
-            # Queries de busca massiva
+            # Queries de busca massiva - EXPANDIDAS
             search_queries = self._generate_search_queries(produto, publico_alvo)
+            logger.info(f"📋 {len(search_queries)} queries geradas para busca massiva ILIMITADA")
 
-            logger.info(f"📋 {len(search_queries)} queries geradas para busca massiva")
-
-            # Executar buscas com limite fixo para evitar loop infinito
-            current_size = 0
+            # Executar buscas com LIMITE INTELIGENTE para performance
             search_count = 0
-            max_searches = min(len(search_queries), 10)  # Máximo 10 buscas para evitar loop
+            max_queries = min(15, len(search_queries))  # LIMITE: máximo 15 queries
+            
+            for query in search_queries[:max_queries]:  # LIMITADO para performance
+                if (time.time() - start_time) > TIME_LIMIT_SECONDS:
+                    logger.warning(f"⏰ Limite de tempo de {TIME_LIMIT_SECONDS/60} minutos atingido. Encerrando busca massiva.")
+                    break
 
-            for query in search_queries[:max_searches]:  # Processa apenas as primeiras queries
                 search_count += 1
-                logger.info(f"🔍 Busca {search_count}: {query[:50]}...")
+                logger.info(f"🔍 Busca {search_count}: {query}")
 
                 # ALIBABA WebSailor - PRINCIPAL
                 try:
@@ -101,23 +102,37 @@ class MassiveSearchEngine:
                     if websailor_result:
                         massive_data['busca_massiva']['alibaba_websailor_results'].append(websailor_result)
                         massive_data['metadata']['apis_used'].append('alibaba_websailor')
-                        logger.info(f"✅ ALIBABA WebSailor: dados coletados")
+                        
+                        # SALVAMENTO SIMULTÂNEO - NOVO
+                        await self._save_search_result_simultaneously(websailor_result, session_id, 'alibaba_websailor')
+                        logger.info(f"✅ ALIBABA WebSailor: dados coletados e salvos simultaneamente")
                 except Exception as e:
                     logger.warning(f"⚠️ ALIBABA WebSailor falhou: {e}")
 
-                # REAL SEARCH ORCHESTRATOR JÁ FOI EXECUTADO NO WORKFLOW - EVITAR LOOP
-                # Apenas registra que os dados já foram coletados
-                # massive_data['metadata']['apis_used'].append('real_search_orchestrator_already_executed') # Removido para evitar poluição de metadados
-                logger.info(f"✅ Real Search Orchestrator: dados já coletados no workflow principal (se aplicável)")
+                # Real Search Orchestrator - EXECUTAR TAMBÉM
+                try:
+                    real_search_result = await self._search_real_orchestrator(query, session_id)
+                    if real_search_result:
+                        massive_data['busca_massiva']['real_search_orchestrator_results'].append(real_search_result)
+                        massive_data['metadata']['apis_used'].append('real_search_orchestrator')
+                        
+                        # SALVAMENTO SIMULTÂNEO - NOVO
+                        await self._save_search_result_simultaneously(real_search_result, session_id, 'real_search_orchestrator')
+                        logger.info(f"✅ Real Search Orchestrator: dados coletados e salvos simultaneamente")
+                except Exception as e:
+                    logger.warning(f"⚠️ Real Search Orchestrator falhou: {e}")
 
-                # Verificar tamanho atual
+                # Verificar tamanho atual - SEM LIMITES
                 current_json = json.dumps(massive_data, ensure_ascii=False, indent=2)
                 current_size = len(current_json.encode('utf-8'))
-
-                logger.info(f"📊 Tamanho atual: {current_size/1024:.1f}KB / {self.min_size_kb}KB")
+                logger.info(f"📊 Tamanho atual: {current_size/1024:.1f}KB (SEM LIMITES)")
 
                 # Pequena pausa entre buscas
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.5)  # Reduzido para acelerar
+
+            # CONSOLIDAÇÃO FINAL - NOVO PROCESSO
+            logger.info("🔄 Consolidando TODOS os dados para IA da etapa 2...")
+            massive_data = await self._consolidate_for_stage2_ai(massive_data, session_id)
 
             # Finalizar dados
             massive_data['timestamp_fim'] = datetime.now().isoformat()
@@ -125,16 +140,16 @@ class MassiveSearchEngine:
             massive_data['metadata']['size_kb'] = current_size / 1024
             massive_data['metadata']['apis_used'] = list(set(massive_data['metadata']['apis_used']))
 
-            # CONSOLIDAÇÃO: Coleta todos os dados salvos para arquivo único
-            logger.info("🔄 Consolidando todos os dados salvos...")
-            massive_data = self._consolidate_all_saved_data(massive_data, session_id)
-
-            # Salva resultado final unificado
+            # Salva resultado final unificado - ARQUIVO CONSOLIDADO ETAPA 1
             save_result = self.auto_save_manager.save_massive_search_result(massive_data, produto)
+            
+            # NOVO: Salvar especificamente para IA da etapa 2 encontrar automaticamente
+            consolidado_file = await self._save_consolidado_etapa1(massive_data, session_id)
 
             if save_result.get('success'):
-                logger.info(f"✅ Resultado massivo CONSOLIDADO salvo: {save_result['filename']} ({save_result['size_kb']:.1f}KB)")
-                return massive_data # Retorna o massive_data consolidado
+                logger.info(f"✅ Resultado massivo ILIMITADO salvo: {save_result['filename']} ({save_result['size_kb']:.1f}KB)")
+                logger.info(f"✅ Consolidado Etapa 1 salvo para IA: {consolidado_file}")
+                return massive_data
             else:
                 logger.error(f"❌ Erro ao salvar resultado massivo: {save_result.get('error')}")
                 return massive_data
@@ -203,93 +218,43 @@ class MassiveSearchEngine:
         return list(set(base_queries + publico_queries + expanded_queries)) # Remove duplicatas
 
     async def _search_alibaba_websailor(self, query: str, session_id: str) -> Optional[Dict[str, Any]]:
-        """Busca usando ALIBABA WebSailor com fallback simplificado"""
+        """Busca usando ALIBABA WebSailor - FOCO EM TEXTO"""
         try:
-            logger.info(f"🌐 Tentando ALIBABA WebSailor para: {query}")
+            logger.info(f"🌐 ALIBABA WebSailor executando busca TEXTUAL: {query}")
 
-            # Tenta usar o websailor se disponível
-            if self.websailor and hasattr(self.websailor, 'navigate_and_research_deep'):
-                try:
-                    navigation_result = await asyncio.wait_for(
-                        self.websailor.navigate_and_research_deep(
-                            query=query,
-                            context={'session_id': session_id},
-                            max_pages=3,
-                            depth_levels=1,
-                            session_id=session_id
-                        ),
-                        timeout=30.0
-                    )
-                    
-                    if navigation_result:
-                        logger.info(f"✅ ALIBABA WebSailor executado com sucesso")
-                        return {
-                            'query': query,
-                            'api': 'alibaba_websailor',
-                            'timestamp': datetime.now().isoformat(),
-                            'navigation_data': navigation_result,
-                            'source': 'ALIBABA_WEBSAILOR_SUCCESS',
-                            'success': True
-                        }
-                
-                except asyncio.TimeoutError:
-                    logger.warning("⚠️ Timeout no Alibaba WebSailor")
-                except Exception as e:
-                    logger.warning(f"⚠️ Erro no Alibaba WebSailor: {e}")
+            # FOCO PRINCIPAL: NAVEGAÇÃO PARA EXTRAIR TEXTO
+            navigation_result = await self.websailor.navigate_and_research_deep(
+                query=query,
+                context={'session_id': session_id, 'extract_text_only': True},
+                max_pages=8,  # Reduzido para focar em qualidade
+                depth_levels=2,
+                session_id=session_id
+            )
             
-            # FALLBACK: Busca simples usando APIs disponíveis
-            logger.info(f"🔄 Usando fallback para Alibaba WebSailor")
-            
-            # Tenta usar Jina como fallback
-            jina_key = os.getenv('JINA_API_KEY')
-            if jina_key:
-                try:
-                    import aiohttp
-                    search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-                    jina_url = f"https://r.jina.ai/{search_url}"
-                    
-                    headers = {
-                        'Authorization': f'Bearer {jina_key}',
-                        'Accept': 'text/plain'
-                    }
-                    
-                    timeout = aiohttp.ClientTimeout(total=15)
-                    async with aiohttp.ClientSession(timeout=timeout) as session:
-                        async with session.get(jina_url, headers=headers) as response:
-                            if response.status == 200:
-                                content = await response.text()
-                                
-                                return {
-                                    'query': query,
-                                    'api': 'alibaba_websailor_fallback',
-                                    'timestamp': datetime.now().isoformat(),
-                                    'fallback_data': content[:2000],
-                                    'source': 'ALIBABA_WEBSAILOR_FALLBACK',
-                                    'success': True
-                                }
-                                
-                except Exception as e:
-                    logger.warning(f"⚠️ Fallback Jina falhou: {e}")
-            
+            # Conta o texto extraído
+            texto_extraido = 0
+            if navigation_result and isinstance(navigation_result, dict):
+                conteudo = navigation_result.get('conteudo_consolidado', {})
+                if conteudo:
+                    textos = conteudo.get('textos_principais', [])
+                    texto_extraido = sum(len(str(texto)) for texto in textos)
+
+            logger.info(f"✅ ALIBABA WebSailor: {texto_extraido:,} caracteres de texto extraído")
+
             return {
                 'query': query,
                 'api': 'alibaba_websailor',
                 'timestamp': datetime.now().isoformat(),
-                'error': 'Não foi possível executar busca',
-                'source': 'ALIBABA_WEBSAILOR_FAILED',
-                'success': False
+                'navigation_data': navigation_result,
+                'texto_stats': {
+                    'caracteres_extraidos': texto_extraido,
+                    'paginas_navegadas': navigation_result.get('total_paginas_navegadas', 0) if navigation_result else 0
+                },
+                'source': 'ALIBABA_WEBSAILOR_TEXTUAL'
             }
-            
         except Exception as e:
-            logger.error(f"❌ ALIBABA WebSailor falhou completamente: {e}")
-            return {
-                'query': query,
-                'api': 'alibaba_websailor',
-                'timestamp': datetime.now().isoformat(),
-                'error': str(e),
-                'source': 'ALIBABA_WEBSAILOR_ERROR',
-                'success': False
-            }
+            logger.error(f"❌ ALIBABA WebSailor falhou: {e}")
+            return None
 
     async def _search_real_orchestrator(self, query: str, session_id: str) -> Optional[Dict[str, Any]]:
         """Busca usando Real Search Orchestrator - SISTEMA PRINCIPAL"""
@@ -323,6 +288,17 @@ class MassiveSearchEngine:
             logger.error(f"❌ Real Search Orchestrator falhou: {e}")
             return None
 
+    async def _save_search_result_simultaneously(self, result: Dict[str, Any], session_id: str, api_name: str):
+        """Salva resultados de busca individualmente e simultaneamente."""
+        try:
+            filename = f"BUSCA_SIMULTANEA_{api_name}_{session_id}_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.json"
+            filepath = os.path.join(self.data_dir, filename)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+            logger.debug(f"💾 Resultado simultâneo salvo: {filename}")
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar resultado simultâneo para {api_name}: {e}")
+
     def _calculate_final_size(self, massive_data: Dict[str, Any]) -> float:
         """Calcula tamanho final em KB"""
         try:
@@ -350,7 +326,6 @@ class MassiveSearchEngine:
                 'modulos_analises': [],
                 'jsons_gigantes': [],
                 'resultados_virais': [],
-                'trechos_pesquisa_web': [],  # Chave ausente adicionada
                 'metadata_consolidacao': {
                     'timestamp_consolidacao': datetime.now().isoformat(),
                     'session_id': session_id,
@@ -391,7 +366,7 @@ class MassiveSearchEngine:
                 if url and url != 'N/A':
                     urls_unicas.add(url)
 
-            # 1. COLETA TEXTOS DA PESQUISA WEB (ALIBABA WebSailor) E SALVA NO AUTO_SAVE_MANAGER
+            # 1. COLETA TEXTOS DA PESQUISA WEB (ALIBABA WebSailor)
             try:
                 if 'alibaba_websailor_results' in massive_data.get('busca_massiva', {}):
                     for result in massive_data['busca_massiva']['alibaba_websailor_results']:
@@ -400,233 +375,166 @@ class MassiveSearchEngine:
                             if nav_data and isinstance(nav_data, dict):
                                 conteudo = nav_data.get('conteudo_consolidado', {})
                                 
-                                # Textos principais - SALVA NO AUTO_SAVE_MANAGER
-                                for i, texto in enumerate(conteudo.get('textos_principais', [])):
-                                    texto_str = str(texto)
-                                    if len(texto_str) > 50:  # Só salva textos relevantes
-                                        # Salva no auto_save_manager para consolidação
-                                        self.auto_save_manager.salvar_trecho_pesquisa_web(
-                                            url=result.get('query', f'websailor_query_{i}'),
-                                            titulo=f"WebSailor Texto Principal {i+1}",
-                                            conteudo=texto_str,
-                                            metodo_extracao='alibaba_websailor',
-                                            qualidade=85.0,  # Alta qualidade para WebSailor
-                                            session_id=session_id
-                                        )
-                                        
-                                        # Também adiciona ao consolidado local
-                                        dados_consolidados['textos_pesquisa_web'].append({
-                                            'fonte': 'websailor_navegacao',
-                                            'url': result.get('query', 'N/A'),
-                                            'texto': texto_str,
-                                            'caracteres': len(texto_str)
-                                        })
-                                        caracteres_totais += len(texto_str)
-                                        textos_processados += 1
-                                        if result.get('query') and result.get('query') != 'N/A':
-                                            urls_unicas.add(result['query'])
+                                # Textos principais
+                                for texto in conteudo.get('textos_principais', []):
+                                    dados_consolidados['textos_pesquisa_web'].append({
+                                        'fonte': 'websailor_navegacao',
+                                        'texto': texto,
+                                        'caracteres': len(texto)
+                                    })
+                                    caracteres_totais += len(texto)
+                                    textos_processados += 1
                                 
-                                # Insights extraídos - SALVA NO AUTO_SAVE_MANAGER
-                                for i, insight in enumerate(conteudo.get('insights_principais', [])):
-                                    insight_str = str(insight)
-                                    if len(insight_str) > 30:  # Só salva insights relevantes
-                                        # Salva no auto_save_manager para consolidação
-                                        self.auto_save_manager.salvar_trecho_pesquisa_web(
-                                            url=result.get('query', f'websailor_insight_{i}'),
-                                            titulo=f"WebSailor Insight {i+1}",
-                                            conteudo=insight_str,
-                                            metodo_extracao='alibaba_websailor_insights',
-                                            qualidade=90.0,  # Muito alta qualidade para insights
-                                            session_id=session_id
-                                        )
-                                        
-                                        # Também adiciona ao consolidado local
-                                        dados_consolidados['insights_extraidos'].append({
-                                            'fonte': 'websailor_insights',
-                                            'insight': insight_str,
-                                            'caracteres': len(insight_str)
-                                        })
-                                        caracteres_totais += len(insight_str)
-                
-                logger.info(f"✅ Coletados {textos_processados} textos da pesquisa web (WebSailor) - SALVOS NO AUTO_SAVE_MANAGER")
-            except Exception as e:
-                logger.error(f"❌ Erro ao coletar textos web (WebSailor): {e}")
+                                # URLs
+                                for url_item in conteudo.get('urls_processadas', []):
+                                    urls_unicas.add(url_item)
 
-            # 1.5. COLETA DADOS DO REAL SEARCH ORCHESTRATOR E SALVA NO AUTO_SAVE_MANAGER
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao processar resultados do Alibaba WebSailor para consolidação: {e}")
+
+            # 2. COLETA TEXTOS DO REAL SEARCH ORCHESTRATOR
             try:
                 if 'real_search_orchestrator_results' in massive_data.get('busca_massiva', {}):
                     for result in massive_data['busca_massiva']['real_search_orchestrator_results']:
                         if result and isinstance(result, dict):
-                            result_data = result.get('data', {})
-                            
-                            # Processa web_results
-                            for i, web_result in enumerate(result_data.get('web_results', [])):
-                                if isinstance(web_result, dict):
-                                    content = web_result.get('content', '') or web_result.get('snippet', '')
-                                    title = web_result.get('title', f'Web Result {i+1}')
-                                    url = web_result.get('url', f'real_search_web_{i}')
-                                    
-                                    if len(content) > 50:
-                                        # Salva no auto_save_manager
-                                        self.auto_save_manager.salvar_trecho_pesquisa_web(
-                                            url=url,
-                                            titulo=title,
-                                            conteudo=content,
-                                            metodo_extracao='real_search_orchestrator_web',
-                                            qualidade=80.0,
-                                            session_id=session_id
-                                        )
-                                        
-                                        # Adiciona ao consolidado local
-                                        dados_consolidados['textos_pesquisa_web'].append({
-                                            'fonte': 'real_search_web',
-                                            'url': url,
-                                            'texto': content,
-                                            'caracteres': len(content)
-                                        })
-                                        caracteres_totais += len(content)
-                                        textos_processados += 1
-                                        urls_unicas.add(url)
-                            
-                            # Processa social_results
-                            for i, social_result in enumerate(result_data.get('social_results', [])):
-                                if isinstance(social_result, dict):
-                                    content = social_result.get('content', '') or social_result.get('text', '')
-                                    title = social_result.get('title', f'Social Result {i+1}')
-                                    url = social_result.get('url', f'real_search_social_{i}')
-                                    
-                                    if len(content) > 30:
-                                        # Salva no auto_save_manager
-                                        self.auto_save_manager.salvar_trecho_pesquisa_web(
-                                            url=url,
-                                            titulo=title,
-                                            conteudo=content,
-                                            metodo_extracao='real_search_orchestrator_social',
-                                            qualidade=75.0,
-                                            session_id=session_id
-                                        )
-                                        
-                                        # Adiciona ao consolidado local
-                                        dados_consolidados['textos_redes_sociais'].append({
-                                            'fonte': 'real_search_social',
-                                            'url': url,
-                                            'texto': content,
-                                            'caracteres': len(content)
-                                        })
-                                        caracteres_totais += len(content)
-                                        textos_processados += 1
-                                        urls_unicas.add(url)
-                            
-                            # Processa youtube_results
-                            for i, youtube_result in enumerate(result_data.get('youtube_results', [])):
-                                if isinstance(youtube_result, dict):
-                                    content = youtube_result.get('description', '') or youtube_result.get('content', '')
-                                    title = youtube_result.get('title', f'YouTube Result {i+1}')
-                                    url = youtube_result.get('url', f'real_search_youtube_{i}')
-                                    
-                                    if len(content) > 40:
-                                        # Salva no auto_save_manager
-                                        self.auto_save_manager.salvar_trecho_pesquisa_web(
-                                            url=url,
-                                            titulo=title,
-                                            conteudo=content,
-                                            metodo_extracao='real_search_orchestrator_youtube',
-                                            qualidade=70.0,
-                                            session_id=session_id
-                                        )
-                                        
-                                        # Adiciona ao consolidado local
-                                        dados_consolidados['textos_pesquisa_web'].append({
-                                            'fonte': 'real_search_youtube',
-                                            'url': url,
-                                            'texto': content,
-                                            'caracteres': len(content)
-                                        })
-                                        caracteres_totais += len(content)
-                                        textos_processados += 1
-                                        urls_unicas.add(url)
-                
-                logger.info(f"✅ Coletados dados do Real Search Orchestrator - SALVOS NO AUTO_SAVE_MANAGER")
-            except Exception as e:
-                logger.error(f"❌ Erro ao coletar dados do Real Search Orchestrator: {e}")
-
-            # 2. COLETA DADOS SALVOS EM ETAPAS ANTERIORES (do auto_save_manager)
-            try:
-                session_data = self.auto_save_manager.recuperar_etapa(session_id)
-                if session_data and isinstance(session_data, dict):
-                    extraction_steps = session_data.get('extraction_steps', [])
-                    for step in extraction_steps:
-                        try:
-                            step_data = step.get('dados', {})
-                            _extract_and_add_text(step_data, f"etapa_extracao_{step.get('nome', 'step')}")
-                        except Exception as e:
-                            logger.warning(f"⚠️ Erro ao processar step do auto_save_manager: {e}")
-                logger.info(f"✅ Processados steps salvos do auto_save_manager")
-            except Exception as e:
-                logger.error(f"❌ Erro ao coletar etapas salvas do auto_save_manager: {e}")
-
-            # 3. COLETA DADOS DE DIRETÓRIOS ESPECÍFICOS (relatorios_intermediarios, modulos_analises, jsons_gigantes, resultados_virais, pesquisa_web)
-            data_categories = {
-                'relatorios_intermediarios': 'etapas_extracao',
-                'modulos_analises': 'modulos_analises',
-                'jsons_gigantes': 'jsons_gigantes',
-                'resultados_virais': 'resultados_virais',
-                'pesquisa_web': 'trechos_pesquisa_web'
-            }
-
-            for category_dir, target_list_name in data_categories.items():
-                try:
-                    base_path = os.path.join(self.data_dir, category_dir)
-                    if os.path.exists(base_path):
-                        session_path = os.path.join(base_path, session_id)
-                        if os.path.exists(session_path):
-                            for arquivo in os.listdir(session_path):
-                                if arquivo.endswith('.json'):
-                                    arquivo_path = os.path.join(session_path, arquivo)
-                                    try:
-                                        with open(arquivo_path, 'r', encoding='utf-8') as f:
-                                            dados_arquivo = json.load(f)
-                                            
-                                            # Adiciona ao massive_data['dados_consolidados_texto'] diretamente
-                                            dados_consolidados[target_list_name].append({
-                                                'arquivo_origem': arquivo,
-                                                'tipo': category_dir,
-                                                'dados': dados_arquivo
+                            # Extrair textos de web_results, social_results, youtube_results
+                            for key in ['web_results', 'social_results', 'youtube_results']:
+                                for item in result.get('data', {}).get(key, []):
+                                    if isinstance(item, dict):
+                                        text_content = item.get('description') or item.get('title') or item.get('snippet')
+                                        if text_content and len(text_content) > 50:
+                                            dados_consolidados['textos_pesquisa_web'].append({
+                                                'fonte': f"real_search_orchestrator_{key}",
+                                                'texto': text_content,
+                                                'caracteres': len(text_content)
                                             })
-                                            _extract_and_add_text(dados_arquivo, f"{category_dir}_file")
+                                            caracteres_totais += len(text_content)
+                                            textos_processados += 1
+                                        url = item.get('link') or item.get('url')
+                                        if url: urls_unicas.add(url)
 
-                                    except Exception as e:
-                                        logger.warning(f"⚠️ Erro ao ler {arquivo_path} na categoria {category_dir}: {e}")
-                    logger.info(f"✅ Coletados dados da categoria: {category_dir}")
-                except Exception as e:
-                    logger.error(f"❌ Erro ao coletar dados da categoria {category_dir}: {e}")
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao processar resultados do Real Search Orchestrator para consolidação: {e}")
 
-            # 4. ADICIONA METADADOS PARA A IA
-            dados_consolidados['metadata_consolidacao'].update({
-                'total_textos_processados': textos_processados,
-                'caracteres_totais': caracteres_totais,
-                'fontes_unicas': len(urls_unicas),
-                'tamanho_kb': caracteres_totais / 1024,
-                'urls_fonte': list(urls_unicas)[:10],  # Máximo 10 URLs para contexto
-                'resumo_coleta': f"{textos_processados} textos, {caracteres_totais:,} chars, {len(urls_unicas)} fontes"
-            })
-            
-            logger.info(f"📊 CONSOLIDAÇÃO TEXTUAL FINAL: {textos_processados} textos, {caracteres_totais:,} caracteres")
-            
-            # Adiciona dados consolidados ao massive_data (APENAS TEXTO)
-            massive_data['dados_consolidados_texto'] = dados_consolidados
+            # Atualizar metadados da consolidação
+            dados_consolidados['metadata_consolidacao']['total_textos_processados'] = textos_processados
+            dados_consolidados['metadata_consolidacao']['caracteres_totais'] = caracteres_totais
+            dados_consolidados['metadata_consolidacao']['fontes_unicas'] = len(urls_unicas)
+            dados_consolidados['urls_processadas'] = list(urls_unicas)
 
-            logger.info(f"✅ CONSOLIDAÇÃO TEXTUAL CONCLUÍDA: {textos_processados} textos processados")
-            logger.info(f"📝 Total: {caracteres_totais:,} caracteres para análise da IA")
+            logger.info(f"✅ Consolidação TEXTUAL concluída: {textos_processados} textos, {caracteres_totais:,} caracteres, {len(urls_unicas)} URLs únicas")
+
+            # Adicionar ao massive_data
+            massive_data['consolidado_etapa1'] = dados_consolidados
 
             return massive_data
 
         except Exception as e:
-            logger.error(f"❌ Erro na consolidação de dados: {e}")
-            # Retorna dados originais se falhar
+            logger.error(f"❌ Erro ao consolidar todos os dados salvos: {e}")
             return massive_data
+
+    async def _consolidate_for_stage2_ai(self, massive_data: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+        """Consolida todos os dados especificamente para a IA da etapa 2"""
+        try:
+            logger.info("🤖 Preparando consolidado para IA da etapa 2 (Grok-4-fast + Gemini)")
+            
+            # Criar estrutura consolidada para IA
+            consolidado_ia = {
+                'todos_textos_coletados': [],
+                'insights_principais': [],
+                'urls_processadas': [],
+                'dados_estruturados': {},
+                'metadata_para_ia': {
+                    'total_caracteres': 0,
+                    'total_fontes': 0,
+                    'timestamp_consolidacao': datetime.now().isoformat(),
+                    'session_id': session_id,
+                    'preparado_para': 'grok-4-fast_gemini_fallback'
+                }
+            }
+            
+            # Consolidar todos os textos coletados
+            total_chars = 0
+            total_sources = 0
+            
+            # Processar resultados do Alibaba WebSailor
+            for result in massive_data.get('busca_massiva', {}).get('alibaba_websailor_results', []):
+                if result and isinstance(result, dict):
+                    text_content = json.dumps(result, ensure_ascii=False)
+                    consolidado_ia['todos_textos_coletados'].append({
+                        'fonte': 'alibaba_websailor',
+                        'query': result.get('query', 'N/A'),
+                        'conteudo': text_content,
+                        'caracteres': len(text_content)
+                    })
+                    total_chars += len(text_content)
+                    total_sources += 1
+            
+            # Processar resultados do Real Search Orchestrator
+            for result in massive_data.get('busca_massiva', {}).get('real_search_orchestrator_results', []):
+                if result and isinstance(result, dict):
+                    text_content = json.dumps(result, ensure_ascii=False)
+                    consolidado_ia['todos_textos_coletados'].append({
+                        'fonte': 'real_search_orchestrator',
+                        'query': result.get('query', 'N/A'),
+                        'conteudo': text_content,
+                        'caracteres': len(text_content)
+                    })
+                    total_chars += len(text_content)
+                    total_sources += 1
+            
+            # Atualizar metadata
+            consolidado_ia['metadata_para_ia']['total_caracteres'] = total_chars
+            consolidado_ia['metadata_para_ia']['total_fontes'] = total_sources
+            
+            # Adicionar ao massive_data
+            massive_data['consolidado_etapa1'] = consolidado_ia
+            
+            logger.info(f"🤖 Consolidado para IA preparado: {total_sources} fontes, {total_chars:,} caracteres")
+            
+            return massive_data
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao consolidar para IA da etapa 2: {e}")
+            return massive_data
+
+    async def _save_consolidado_etapa1(self, massive_data: Dict[str, Any], session_id: str) -> str:
+        """Salva arquivo consolidado específico para IA da etapa 2 encontrar automaticamente"""
+        try:
+            # Nome padronizado que a IA da etapa 2 vai procurar
+            filename = f"CONSOLIDADO_ETAPA1_{session_id}.json"
+            filepath = os.path.join(self.data_dir, filename)
+            
+            # Dados específicos para IA
+            consolidado_para_ia = {
+                'session_id': session_id,
+                'timestamp': datetime.now().isoformat(),
+                'produto': massive_data.get('produto', 'N/A'),
+                'publico_alvo': massive_data.get('publico_alvo', 'N/A'),
+                'dados_consolidados': massive_data.get('consolidado_etapa1', {}),
+                'metadata_busca': massive_data.get('metadata', {}),
+                'instrucoes_para_ia': {
+                    'modelo_primario': 'x-ai/grok-4-fast:free',
+                    'modelo_fallback': 'gemini-2.0-flash-exp',
+                    'sem_limites_tokens': True,
+                    'processar_todos_dados': True,
+                    'gerar_analise_completa': True
+                }
+            }
+            
+            # Salvar arquivo
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(consolidado_para_ia, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"📁 Consolidado Etapa 1 salvo: {filename}")
+            return filename
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar consolidado etapa 1: {e}")
+            return "erro_salvamento"
 
 
 # Instância global
 massive_search_engine = MassiveSearchEngine()
+
 

@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 """
 ARQV30 Enhanced v3.0 - Enhanced AI Manager
-Gerenciador de IA com suporte a ferramentas e busca ativa
+Gerenciador de IA com hierarquia OpenRouter: Grok-4 → Gemini-2.0 e fallbacks robustos
+ZERO SIMULAÇÃO - Apenas modelos reais funcionais
 """
 
 import os
 import logging
 import asyncio
 import json
+import aiohttp
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from dotenv import load_dotenv
@@ -16,216 +18,414 @@ from dotenv import load_dotenv
 # Carregar variáveis de ambiente
 load_dotenv()
 
-# Imports condicionais
-try:
-    import google.generativeai as genai
-    from google.generativeai.types import FunctionDeclaration, Tool
-    HAS_GEMINI = True
-except ImportError:
-    HAS_GEMINI = False
-
-try:
-    import openai
-    HAS_OPENAI = True
-except ImportError:
-    HAS_OPENAI = False
-
-try:
-    from groq import Groq
-    HAS_GROQ = True
-except ImportError:
-    HAS_GROQ = False
-
-# Adicionando suporte ao OpenRouter
-try:
-    import openai as openrouter_openai
-    HAS_OPENROUTER = True
-except ImportError:
-    HAS_OPENROUTER = False
-
 logger = logging.getLogger(__name__)
 
 class EnhancedAIManager:
-    """Gerenciador de IA aprimorado com ferramentas de busca ativa"""
+    """Gerenciador de IA aprimorado com hierarquia OpenRouter e fallbacks"""
 
     def __init__(self):
-        """Inicializa o gerenciador aprimorado"""
-        self.providers = {}
-        self.current_provider = None
+        """Inicializa o gerenciador aprimorado com hierarquia OpenRouter"""
+        # Carregar chaves OpenRouter
+        self.openrouter_keys = self._load_openrouter_keys()
+        self.current_key_index = 0
+        
+        # Carregar chaves Gemini para fallback
+        self.gemini_keys = self._load_gemini_keys()
+        self.current_gemini_key_index = 0
+        
+        # Configurar hierarquia de modelos
+        self.model_hierarchy = [
+            {
+                'name': 'x-ai/grok-4-fast:free',
+                'provider': 'openrouter',
+                'priority': 1,
+                'max_tokens': 4000,
+                'temperature': 0.7
+            },
+            {
+                'name': 'google/gemini-2.0-flash-exp:free',
+                'provider': 'openrouter',
+                'priority': 2,
+                'max_tokens': 8000,
+                'temperature': 0.7
+            },
+            {
+                'name': 'gemini-2.0-flash-exp',
+                'provider': 'gemini_direct',
+                'priority': 3,
+                'max_tokens': 4000,
+                'temperature': 0.7
+            }
+        ]
+        
         self.search_orchestrator = None
+        
+        # Importar search orchestrator se disponível
+        try:
+            from .real_search_orchestrator import RealSearchOrchestrator
+            self.search_orchestrator = RealSearchOrchestrator()
+            logger.info("✅ Search Orchestrator carregado")
+        except ImportError:
+            logger.warning("⚠️ Search Orchestrator não disponível")
 
-        self._initialize_providers()
-        self._initialize_search_tools()
-
-        logger.info(f"🤖 Enhanced AI Manager inicializado com {len(self.providers)} provedores")
-
-    def _initialize_providers(self):
-        """Inicializa todos os provedores de IA"""
-
-        # OpenRouter X-AI Grok-4-Fast:free (Prioridade 1 - PRIMÁRIA)
-        if HAS_OPENROUTER:
-            openrouter_keys = [
-                os.getenv("OPENROUTER_API_KEY"),
-                os.getenv("OPENROUTER_API_KEY_1"), 
-                os.getenv("OPENROUTER_API_KEY_2"),
-                os.getenv("OPENROUTER_API_KEY_3")
-            ]
-            openrouter_keys = [key for key in openrouter_keys if key]  # Remove None
+        logger.info("🤖 Enhanced AI Manager inicializado com hierarquia Grok-4 → Gemini-2.0")
+        logger.info(f"🔑 {len(self.openrouter_keys)} chaves OpenRouter carregadas")
+        logger.info(f"🔑 {len(self.gemini_keys)} chaves Gemini carregadas")
+    
+    def _load_openrouter_keys(self) -> List[str]:
+        """Carrega múltiplas chaves OpenRouter"""
+        keys = []
+        
+        # Chave principal
+        main_key = os.getenv('OPENROUTER_API_KEY')
+        if main_key and main_key.strip():
+            keys.append(main_key.strip())
             
-            if openrouter_keys:
-                try:
-                    # Criar clientes para todas as chaves
-                    openrouter_clients = []
-                    for i, api_key in enumerate(openrouter_keys):
-                        client = openrouter_openai.OpenAI(
-                            api_key=api_key,
-                            base_url="https://openrouter.ai/api/v1"
-                        )
-                        openrouter_clients.append(client)
-                    
-                    self.providers["openrouter_grok"] = {
-                        "clients": openrouter_clients,  # Lista de clientes
-                        "current_client_index": 0,  # Índice atual
-                        "model": "x-ai/grok-4-fast:free",  # X-AI Grok-4-Fast FREE como primária
-                        "available": True,  # Habilitado como primária
-                        "supports_tools": True,
-                        "priority": 1,  # PRIORIDADE MÁXIMA
-                        "total_keys": len(openrouter_keys),
-                        "max_tokens": None,  # SEM LIMITAÇÃO DE TOKENS
-                        "description": "X-AI Grok-4-Fast FREE - IA Primária"
-                    }
-                    logger.info(f"✅ OpenRouter X-AI Grok-4-Fast:free configurado como PRIMÁRIA com {len(openrouter_keys)} chaves API")
-                except Exception as e:
-                    logger.error(f"❌ Erro ao configurar OpenRouter Grok: {e}")
-
-        # OpenRouter Gemini 2.0 Flash Exp:free (Prioridade 2 - FALLBACK)
-        if HAS_OPENROUTER:
-            openrouter_keys = [
-                os.getenv("OPENROUTER_API_KEY"),
-                os.getenv("OPENROUTER_API_KEY_1"), 
-                os.getenv("OPENROUTER_API_KEY_2"),
-                os.getenv("OPENROUTER_API_KEY_3")
-            ]
-            openrouter_keys = [key for key in openrouter_keys if key]  # Remove None
+        # Chaves numeradas
+        for i in range(1, 6):
+            key = os.getenv(f'OPENROUTER_API_KEY_{i}')
+            if key and key.strip():
+                keys.append(key.strip())
+                
+        logger.info(f"✅ {len(keys)} chaves OpenRouter carregadas")
+        return keys
+    
+    def _load_gemini_keys(self) -> List[str]:
+        """Carrega múltiplas chaves Gemini"""
+        keys = []
+        
+        # Chave principal
+        main_key = os.getenv('GEMINI_API_KEY')
+        if main_key and main_key.strip():
+            keys.append(main_key.strip())
             
-            if openrouter_keys:
-                try:
-                    # Criar clientes para todas as chaves (reutilizando as mesmas)
-                    openrouter_clients = []
-                    for i, api_key in enumerate(openrouter_keys):
-                        client = openrouter_openai.OpenAI(
-                            api_key=api_key,
-                            base_url="https://openrouter.ai/api/v1"
-                        )
-                        openrouter_clients.append(client)
-                    
-                    self.providers["openrouter_gemini"] = {
-                        "clients": openrouter_clients,  # Lista de clientes
-                        "current_client_index": 0,  # Índice atual
-                        "model": "google/gemini-2.0-flash-exp:free",  # Gemini 2.0 Flash Exp FREE como fallback
-                        "available": True,  # Habilitado como fallback
-                        "supports_tools": True,
-                        "priority": 2,  # FALLBACK
-                        "total_keys": len(openrouter_keys),
-                        "max_tokens": None,  # SEM LIMITAÇÃO DE TOKENS
-                        "description": "Gemini 2.0 Flash Exp FREE - IA Fallback"
-                    }
-                    logger.info(f"✅ OpenRouter Gemini 2.0 Flash Exp:free configurado como FALLBACK com {len(openrouter_keys)} chaves API")
-                except Exception as e:
-                    logger.error(f"❌ Erro ao configurar OpenRouter Gemini: {e}")
+        # Chaves numeradas
+        for i in range(1, 4):
+            key = os.getenv(f'GEMINI_API_KEY_{i}')
+            if key and key.strip():
+                keys.append(key.strip())
+                
+        logger.info(f"✅ {len(keys)} chaves Gemini carregadas")
+        return keys
+    
+    def _get_next_openrouter_key(self) -> Optional[str]:
+        """Obtém próxima chave OpenRouter com rotação"""
+        if not self.openrouter_keys:
+            return None
+            
+        key = self.openrouter_keys[self.current_key_index]
+        self.current_key_index = (self.current_key_index + 1) % len(self.openrouter_keys)
+        return key
+    
+    def _get_next_gemini_key(self) -> Optional[str]:
+        """Obtém próxima chave Gemini com rotação"""
+        if not self.gemini_keys:
+            return None
+            
+        key = self.gemini_keys[self.current_gemini_key_index]
+        self.current_gemini_key_index = (self.current_gemini_key_index + 1) % len(self.gemini_keys)
+        return key
 
-        # Gemini Direto (Prioridade 3 - Backup)
-        if HAS_GEMINI:
-            api_key = os.getenv("GEMINI_API_KEY")
-            if api_key:
+    async def _generate_with_openrouter(
+        self,
+        prompt: str,
+        model_name: str,
+        max_tokens: int = 4000,
+        temperature: float = 0.7,
+        system_prompt: Optional[str] = None
+    ) -> Optional[str]:
+        """Gera conteúdo usando OpenRouter com rotação de chaves"""
+        
+        # Preparar mensagens
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        # Tentar com todas as chaves disponíveis
+        for attempt in range(len(self.openrouter_keys)):
+            api_key = self._get_next_openrouter_key()
+            if not api_key:
+                continue
+                
+            try:
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/joscarmao/v1800finalv2",
+                    "X-Title": "ARQV30 Enhanced v3.0"
+                }
+                
+                payload = {
+                    "model": model_name,
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "stream": False
+                }
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=120)
+                    ) as response:
+                        
+                        if response.status == 200:
+                            result = await response.json()
+                            content = result["choices"][0]["message"]["content"]
+                            logger.info(f"✅ OpenRouter {model_name} sucesso")
+                            return content
+                        else:
+                            error_text = await response.text()
+                            logger.warning(f"⚠️ OpenRouter key {attempt + 1} falhou: {response.status}")
+                            
+            except Exception as e:
+                logger.warning(f"⚠️ Erro OpenRouter key {attempt + 1}: {str(e)[:100]}")
+                continue
+        
+        logger.error(f"❌ Todas as chaves OpenRouter falharam para {model_name}")
+        return None
+    
+    async def _generate_with_gemini_direct(
+        self,
+        prompt: str,
+        max_tokens: int = 4000,
+        temperature: float = 0.7,
+        system_prompt: Optional[str] = None
+    ) -> Optional[str]:
+        """Gera conteúdo usando Gemini direto com rotação de chaves"""
+        
+        try:
+            import google.generativeai as genai
+            
+            # Tentar com todas as chaves Gemini
+            for attempt in range(len(self.gemini_keys)):
+                api_key = self._get_next_gemini_key()
+                if not api_key:
+                    continue
+                    
                 try:
                     genai.configure(api_key=api_key)
-                    self.providers["gemini"] = {
-                        "client": genai,
-                        "model": "gemini-2.0-flash-exp",
-                        "available": True,  # Habilitado como backup
-                        "supports_tools": True,
-                        "priority": 3,
-                        "max_tokens": None,  # SEM LIMITAÇÃO DE TOKENS
-                        "description": "Gemini Direto - Backup"
+                    model = genai.GenerativeModel("gemini-2.0-flash-exp")
+                    
+                    # Combinar system prompt e user prompt se necessário
+                    full_prompt = prompt
+                    if system_prompt:
+                        full_prompt = f"{system_prompt}\n\n{prompt}"
+                    
+                    generation_config = {
+                        'temperature': temperature,
+                        'top_p': 0.95,
+                        'top_k': 64,
+                        'max_output_tokens': max_tokens,
                     }
-                    logger.info("✅ Gemini 2.0 Flash Direto configurado como backup")
+                    
+                    response = model.generate_content(
+                        full_prompt,
+                        generation_config=generation_config
+                    )
+                    
+                    if response.text:
+                        logger.info(f"✅ Gemini direto sucesso")
+                        return response.text
+                        
                 except Exception as e:
-                    logger.error(f"❌ Erro ao configurar Gemini: {e}")
-
-        # Groq (Prioridade 4 - Desabilitado conforme solicitado)
-        if HAS_GROQ:
-            api_key = os.getenv("GROQ_API_KEY")
-            if api_key:
-                try:
-                    self.providers["groq"] = {
-                        "client": Groq(api_key=api_key),
-                        "model": "llama3-70b-8192",
-                        "available": False,  # DESABILITADO conforme solicitado
-                        "supports_tools": False,
-                        "priority": 4,
-                        "max_tokens": None,  # SEM LIMITAÇÃO DE TOKENS
-                        "description": "Groq - Desabilitado"
-                    }
-                    logger.info("ℹ️ Groq configurado mas DESABILITADO")
-                except Exception as e:
-                    logger.error(f"❌ Erro ao configurar Groq: {e}")
-
-        # OpenAI (Prioridade 5 - Último recurso)
-        if HAS_OPENAI:
-            api_key = os.getenv("OPENAI_API_KEY")
-            if api_key:
-                try:
-                    self.providers["openai"] = {
-                        "client": openai.OpenAI(api_key=api_key),
-                        "model": "gpt-4o",
-                        "available": True,
-                        "supports_tools": True,
-                        "priority": 5,  # Último recurso
-                        "max_tokens": None,  # SEM LIMITAÇÃO DE TOKENS
-                        "description": "OpenAI GPT-4o - Último recurso"
-                    }
-                    logger.info("✅ OpenAI GPT-4o configurado como último recurso")
-                except Exception as e:
-                    logger.error(f"❌ Erro ao configurar OpenAI: {e}")
-
-    def _initialize_search_tools(self):
-        """Inicializa ferramentas de busca"""
-        try:
-            from services.real_search_orchestrator import real_search_orchestrator
-            self.search_orchestrator = real_search_orchestrator
-            logger.info("✅ Ferramentas de busca ativa configuradas")
-        except ImportError:
-            logger.warning("⚠️ Search orchestrator não disponível")
-
-    def _get_best_provider(self, require_tools: bool = False) -> Optional[str]:
-        """Seleciona o melhor provedor disponível"""
-        available = []
-
-        for name, provider in self.providers.items():
-            if not provider["available"]:
-                continue
-
-            # Se requer tools, pula provedores que não suportam
-            if require_tools and not provider.get("supports_tools", False):
-                 # Mas permite Qwen mesmo sem tools como fallback se necessário
-                 if name != "openrouter": # Qwen pode ser usado mesmo sem tools se for o único
+                    logger.warning(f"⚠️ Erro Gemini key {attempt + 1}: {str(e)[:100]}")
                     continue
+            
+            logger.error("❌ Todas as chaves Gemini falharam")
+            return None
+            
+        except ImportError:
+            logger.error("❌ google-generativeai não instalado")
+            return None
+    
+    def generate_response(
+        self,
+        prompt: str,
+        model: str = "x-ai/grok-4-fast:free",
+        max_tokens: int = 4000,
+        temperature: float = 0.7
+    ) -> Dict[str, Any]:
+        """Gera resposta síncrona usando hierarquia de modelos"""
+        try:
+            # Executar geração assíncrona de forma síncrona
+            import asyncio
+            
+            async def _async_generate():
+                return await self.generate_text(
+                    prompt=prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    model_override=model
+                )
+            
+            # Tentar obter loop existente ou criar novo
+            try:
+                loop = asyncio.get_running_loop()
+                # Se já há um loop rodando, criar task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, _async_generate())
+                    content = future.result(timeout=180)
+            except RuntimeError:
+                # Nenhum loop rodando, executar diretamente
+                content = asyncio.run(_async_generate())
+            
+            return {
+                'success': True,
+                'content': content,
+                'model': model,
+                'provider': 'hierarchy',
+                'tokens_used': len(content.split()) * 1.3  # Estimativa
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na geração de resposta: {e}")
+            return {
+                'success': False,
+                'content': 'Erro interno ao gerar resposta',
+                'error': str(e)
+            }
 
-            available.append((name, provider["priority"]))
+    async def generate_text(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        model_override: Optional[str] = None
+    ) -> str:
+        """
+        Gera texto usando hierarquia de modelos: Grok-4 → Gemini-2.0 → Gemini Direct
+        
+        Args:
+            prompt: Prompt do usuário
+            system_prompt: Prompt do sistema (opcional)
+            max_tokens: Máximo de tokens (opcional)
+            temperature: Temperatura (opcional)
+            model_override: Modelo específico (opcional)
+        
+        Returns:
+            String com a resposta da IA
+        """
+        max_tokens = max_tokens or 4000
+        temperature = temperature or 0.7
+        
+        # Se modelo específico foi solicitado, tentar apenas ele
+        if model_override:
+            target_models = [m for m in self.model_hierarchy if m['name'] == model_override]
+            if not target_models:
+                # Se modelo não encontrado, usar hierarquia normal
+                target_models = self.model_hierarchy
+        else:
+            target_models = self.model_hierarchy
+        
+        # Tentar cada modelo na hierarquia
+        for model_config in target_models:
+            try:
+                logger.info(f"🤖 Tentando {model_config['name']} ({model_config['provider']})")
+                
+                if model_config['provider'] == 'openrouter':
+                    result = await self._generate_with_openrouter(
+                        prompt=prompt,
+                        model_name=model_config['name'],
+                        max_tokens=min(max_tokens, model_config['max_tokens']),
+                        temperature=temperature,
+                        system_prompt=system_prompt
+                    )
+                    
+                elif model_config['provider'] == 'gemini_direct':
+                    result = await self._generate_with_gemini_direct(
+                        prompt=prompt,
+                        max_tokens=min(max_tokens, model_config['max_tokens']),
+                        temperature=temperature,
+                        system_prompt=system_prompt
+                    )
+                else:
+                    logger.warning(f"⚠️ Provider desconhecido: {model_config['provider']}")
+                    continue
+                
+                if result:
+                    logger.info(f"✅ Sucesso com {model_config['name']}")
+                    return result
+                else:
+                    logger.warning(f"⚠️ {model_config['name']} não retornou resultado")
+                    
+            except Exception as e:
+                logger.error(f"❌ Erro com {model_config['name']}: {str(e)[:100]}")
+                continue
+        
+        # Se todos os modelos falharam, usar fallback básico
+        logger.error("❌ Todos os modelos da hierarquia falharam")
+        raise Exception("Todos os modelos de IA falharam. Verifique as configurações das APIs.")
+    
+    def generate_text_sync(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        model_override: Optional[str] = None
+    ) -> str:
+        """Versão síncrona da geração de texto"""
+        try:
+            return generate_with_gemini_direct_sync(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens or 4000,
+                temperature=temperature or 0.7
+            )
+        except (ConnectionError, TimeoutError) as e:
+            logger.error(f"❌ Erro de conexão ao gerar texto (sync): {str(e)}")
+            raise
+        except (ValueError, KeyError) as e:
+            logger.error(f"❌ Erro de parâmetros ao gerar texto (sync): {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"❌ Erro inesperado ao gerar texto (sync): {str(e)}")
+            raise
 
-        if available:
-            # Ordena pela prioridade (menor número = maior prioridade)
-            available.sort(key=lambda x: x[1])
-            return available[0][0]
-
-        # Se nenhum provedor com tools está disponível, mas precisamos de tools
-        # Retorna o melhor provedor sem tools
-        if require_tools:
-            logger.warning("⚠️ Nenhum provedor com tools disponível, usando provedor simples")
-            return self._get_best_provider(require_tools=False)
-
-        return None
+    async def _perform_smart_search(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        """Realiza busca inteligente com fallbacks Serper → Jina → EXA"""
+        
+        if not self.search_orchestrator:
+            logger.warning("⚠️ Search Orchestrator não disponível")
+            return []
+        
+        try:
+            # 1. Tentar Serper primeiro
+            logger.info(f"🔍 Tentando busca Serper para: {query}")
+            serper_results = await self.search_orchestrator.search_serper(query, max_results)
+            
+            if serper_results:
+                logger.info(f"✅ Serper retornou {len(serper_results)} resultados")
+                return serper_results
+            
+            # 2. Fallback para Jina
+            logger.info(f"🔍 Fallback: Tentando busca Jina para: {query}")
+            jina_results = await self.search_orchestrator.search_jina(query, max_results)
+            
+            if jina_results:
+                logger.info(f"✅ Jina retornou {len(jina_results)} resultados")
+                return jina_results
+            
+            # 3. Fallback para EXA
+            logger.info(f"🔍 Fallback: Tentando busca EXA para: {query}")
+            exa_results = await self.search_orchestrator.search_exa(query, max_results)
+            
+            if exa_results:
+                logger.info(f"✅ EXA retornou {len(exa_results)} resultados")
+                return exa_results
+            
+            logger.warning("⚠️ Todos os serviços de busca falharam")
+            return []
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na busca inteligente: {e}")
+            return []
 
     async def generate_with_active_search(
         self,
@@ -237,646 +437,289 @@ class EnhancedAIManager:
         min_processing_time: int = 0
     ) -> str:
         """
-        Gera conteúdo com busca ativa - IA pode buscar informações online
+        Gera conteúdo com busca ativa usando hierarquia Grok-4 → Gemini
         """
-        logger.info(f"🔍 Iniciando geração com busca ativa (min_time: {min_processing_time}s)")
+        logger.info(f"🔍 Iniciando geração com busca ativa (modelo: {preferred_model or 'hierarquia'})")
         
         # Registrar tempo de início para garantir tempo mínimo
         start_time = datetime.now()
 
-        # Usar modelo preferido ou selecionar automaticamente
-        if preferred_model == "grok" and "openrouter_grok" in self.providers and self.providers["openrouter_grok"]["available"]:
-            provider_name = "openrouter_grok"
-            logger.info(f"🚀 MODO GROK: Usando X-AI Grok-4-Fast:free como PRIMÁRIA")
-            logger.info(f"🔥 Configurado para análise ULTRA-PROFUNDA sem limitação de tokens")
-        elif "openrouter_grok" in self.providers and self.providers["openrouter_grok"]["available"]:
-            provider_name = "openrouter_grok"
-            logger.info(f"🚀 Usando X-AI Grok-4-Fast:free como IA PRIMÁRIA")
-        elif "openrouter_gemini" in self.providers and self.providers["openrouter_gemini"]["available"]:
-            provider_name = "openrouter_gemini"
-            logger.info(f"🔄 FALLBACK: Usando Gemini 2.0 Flash Exp:free")
-        else:
-            # Caso contrário, usa a lógica padrão
-            provider_name = self._get_best_provider(require_tools=True)
-            if not provider_name:
-                logger.warning("⚠️ Nenhum provedor com ferramentas disponível - usando fallback")
-                return await self.generate_text(prompt + "\n\n" + context)
+        # Realizar buscas complementares se necessário
+        additional_context = ""
+        if max_search_iterations > 0:
+            # Extrair termos de busca do prompt
+            search_queries = self._extract_search_terms(prompt)
+            
+            for i, query in enumerate(search_queries[:max_search_iterations]):
+                logger.info(f"🔍 Busca {i+1}/{len(search_queries)}: {query}")
+                search_results = await self._perform_smart_search(query, max_results=3)
+                
+                if search_results:
+                    additional_context += f"\n\n=== DADOS DE BUSCA: {query} ===\n"
+                    for result in search_results:
+                        additional_context += f"- {result.get('title', 'Sem título')}: {result.get('snippet', result.get('description', ''))}\n"
 
-        provider = self.providers[provider_name]
-        logger.info(f"🤖 Usando {provider_name} com busca ativa")
-
-        # Prepara prompt com instruções de busca
+        # Prepara prompt com instruções de busca e contexto
         enhanced_prompt = f"""
 {prompt}
 
-CONTEXTO DISPONÍVEL:
+CONTEXTO PRINCIPAL:
 {context}
+
+{additional_context if additional_context else ""}
 
 INSTRUÇÕES ESPECIAIS:
 - Analise o contexto fornecido detalhadamente
-- Busque dados atualizados sobre o mercado brasileiro
+- Use os dados de busca complementares para enriquecer a análise
 - Procure por estatísticas, tendências e casos reais
 - Forneça insights profundos baseados nos dados disponíveis
+- Combine informações de múltiplas fontes para criar análise robusta
 
-IMPORTANTE: Gere uma análise completa mesmo sem ferramentas de busca, baseando-se no contexto fornecido.
+IMPORTANTE: Gere uma análise completa e profissional baseando-se em TODOS os dados fornecidos.
 """
 
-        try:
-            # Executa geração com ferramentas baseado no provedor
-            if provider_name == "openrouter_grok":
-                return await self._generate_openrouter_with_tools(enhanced_prompt, max_search_iterations, session_id, "openrouter_grok")
-            elif provider_name == "openrouter_gemini":
-                return await self._generate_openrouter_with_tools(enhanced_prompt, max_search_iterations, session_id, "openrouter_gemini")
-            elif provider_name == "gemini":
-                return await self._generate_gemini_with_tools(enhanced_prompt, max_search_iterations, session_id)
-            elif provider_name == "openai":
-                return await self._generate_openai_with_tools(enhanced_prompt, max_search_iterations, session_id)
-            else:
-                # Para outros provedores - SEM LIMITAÇÃO DE TOKENS
-                logger.info(f"🎓 Usando {provider_name} para ANÁLISE PROFUNDA sem limitação de tokens")
-                return await self.generate_text(enhanced_prompt, max_tokens=None, temperature=0.8)
-        except Exception as e:
-            logger.error(f"❌ Erro com {provider_name}: {e}")
-            # Fallback para geração simples - SEM LIMITAÇÃO DE TOKENS
-            logger.info("🔄 Usando fallback sem limitação de tokens")
-            return await self.generate_text(enhanced_prompt, max_tokens=None, temperature=0.8)
-
-    async def _generate_gemini_with_tools(
-        self,
-        prompt: str,
-        max_iterations: int,
-        session_id: str = None
-    ) -> str:
-        """Gera com Gemini usando ferramentas"""
+        # Sistema prompt para busca ativa
+        system_prompt = """Você é um especialista em análise de mercado e tendências digitais com acesso a dados em tempo real.
+        Sua função é gerar análises profundas e insights valiosos baseados nos dados fornecidos.
+        Sempre forneça informações precisas, atualizadas e acionáveis.
+        Combine dados de múltiplas fontes para criar análises robustas e confiáveis."""
 
         try:
-            model = genai.GenerativeModel("gemini-2.0-flash-exp")
-
-            # Define função de busca
-            search_function = FunctionDeclaration(
-                name="google_search",
-                description="Busca informações atualizadas na internet",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Termo de busca"
-                        }
-                    },
-                    "required": ["query"]
-                }
+            # Usar modelo preferido ou hierarquia
+            logger.info(f"🤖 Gerando com modelo: {preferred_model or 'hierarquia Grok-4 → Gemini'}")
+            
+            # Gerar resposta usando hierarquia
+            response = await self.generate_text(
+                prompt=enhanced_prompt,
+                system_prompt=system_prompt,
+                max_tokens=4000,
+                temperature=0.7,
+                model_override=preferred_model
             )
-
-            tool = Tool(function_declarations=[search_function])
-
-            # Inicia chat com ferramentas
-            chat = model.start_chat(tools=[tool])
-
-            iteration = 0
-            conversation_history = []
-
-            while iteration < max_iterations:
-                iteration += 1
-                logger.info(f"🔄 Iteração {iteration}/{max_iterations}")
-
-                try:
-                    # Envia mensagem
-                    if iteration == 1:
-                        response = chat.send_message(prompt)
-                    else:
-                        # Continua conversa com resultados de busca
-                        response = chat.send_message("Continue a análise com os dados obtidos.")
-
-                    # Verifica se há function calls
-                    if response.candidates[0].content.parts:
-                        for part in response.candidates[0].content.parts:
-                            if part.function_call:
-                                function_call = part.function_call
-
-                                if function_call.name == "google_search":
-                                    search_query = function_call.args.get("query", "")
-                                    logger.info(f"🔍 IA solicitou busca: {search_query}")
-
-                                    # Executa busca real
-                                    search_results = await self._execute_real_search(search_query, session_id)
-
-                                    # Envia resultados de volta para a IA
-                                    search_response = chat.send_message(
-                                        f"Resultados da busca para \'{search_query}\':\n{search_results}"
-                                    )
-
-                                    conversation_history.append({
-                                        "search_query": search_query,
-                                        "search_results": search_results[:1000] # Limita para log
-                                    })
-
-                                    continue
-
-                    # Se chegou aqui, é resposta final
-                    final_response = response.text
-
-                    logger.info(f"✅ Geração com busca ativa concluída em {iteration} iterações")
-                    logger.info(f"🔍 {len(conversation_history)} buscas realizadas")
-
-                    # Garantir tempo mínimo de processamento se especificado
-                    if min_processing_time > 0:
-                        elapsed_time = (datetime.now() - start_time).total_seconds()
-                        if elapsed_time < min_processing_time:
-                            remaining_time = min_processing_time - elapsed_time
-                            logger.info(f"⏱️ Aguardando {remaining_time:.1f}s para completar tempo mínimo de especialização")
-                            await asyncio.sleep(remaining_time)
-
-                    return final_response
-
-                except Exception as e:
-                    logger.error(f"❌ Erro na iteração {iteration}: {e}")
-                    break
-
-            # Se chegou ao limite de iterações
-            logger.warning(f"⚠️ Limite de iterações atingido ({max_iterations})")
-            return "Análise realizada com busca ativa, mas processo limitado por iterações."
-
-        except Exception as e:
-            logger.error(f"❌ Erro no Gemini com ferramentas: {e}")
-            raise
-
-    async def _generate_openai_with_tools(
-        self,
-        prompt: str,
-        max_iterations: int,
-        session_id: str = None
-    ) -> str:
-        """Gera com OpenAI usando ferramentas"""
-
-        try:
-            client = self.providers["openai"]["client"]
-
-            # Define função de busca
-            tools = [{
-                "type": "function",
-                "function": {
-                    "name": "google_search",
-                    "description": "Busca informações atualizadas na internet",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "Termo de busca"
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                }
-            }]
-
-            messages = [{"role": "user", "content": prompt}]
-            iteration = 0
-
-            while iteration < max_iterations:
-                iteration += 1
-                logger.info(f"🔄 Iteração OpenAI {iteration}/{max_iterations}")
-
-                try:
-                    response = client.chat.completions.create(
-                        model=self.providers["openai"]["model"],
-                        messages=messages,
-                        tools=tools,
-                        tool_choice="auto",
-                        max_tokens=4000
-                    )
-
-                    message = response.choices[0].message
-
-                    # Verifica tool calls
-                    if hasattr(message, "tool_calls") and message.tool_calls:
-                        tool_call = message.tool_calls[0]
-
-                        if tool_call.function.name == "google_search":
-                            args = json.loads(tool_call.function.arguments)
-                            search_query = args.get("query", "")
-
-                            logger.info(f"🔍 IA OpenAI solicitou busca: {search_query}")
-
-                            # Executa busca real
-                            search_results = await self._execute_real_search(search_query, session_id)
-
-                            # Adiciona à conversa
-                            messages.append({
-                                "role": "assistant",
-                                "tool_calls": [{
-                                    "id": tool_call.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": "google_search",
-                                        "arguments": tool_call.function.arguments
-                                    }
-                                }]
-                            })
-
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": search_results
-                            })
-
-                            continue
-
-                    # Resposta final
-                    final_response = message.content
-                    logger.info(f"✅ OpenAI geração concluída em {iteration} iterações")
-                    return final_response
-
-                except Exception as e:
-                    error_msg = str(e)
-                    if "429" in error_msg or "quota" in error_msg.lower() or "insufficient_quota" in error_msg.lower():
-                        logger.error(f"❌ OpenAI quota excedida: {e}")
-                        # Marca OpenAI como indisponível temporariamente
-                        self.providers["openai"]["available"] = False
-                        logger.info("🔄 Marcando OpenAI como indisponível e tentando outro provedor")
-
-                        # Tenta usar outro provedor como fallback
-                        fallback_provider = self._get_best_provider(require_tools=False)
-                        if fallback_provider and fallback_provider != "openai":
-                            logger.info(f"🔄 Usando {fallback_provider} como fallback para OpenAI")
-                            return await self.generate_text(prompt)
-                        else:
-                            return "OpenAI quota excedida e nenhum provedor alternativo disponível. Por favor, configure uma chave API válida."
-                    else:
-                        logger.error(f"❌ Erro na iteração OpenAI {iteration}: {e}")
-                    break
-
-            return "Análise realizada com OpenAI e busca ativa."
-
-        except Exception as e:
-            logger.error(f"❌ Erro no OpenAI com ferramentas: {e}")
-            raise
-
-    async def _generate_openrouter_with_tools(
-        self,
-        prompt: str,
-        max_iterations: int,
-        session_id: str = None,
-        provider_key: str = "openrouter_grok"
-    ) -> str:
-        """Gera com OpenRouter (Grok ou Gemini) usando ferramentas"""
-
-        try:
-            provider = self.providers[provider_key]
-            clients = provider["clients"]
-            current_index = provider["current_client_index"]
-            model = provider["model"]
             
-            logger.info(f"🚀 Usando {provider['description']} - Modelo: {model}")
-
-            # Rotação de clientes OpenRouter
-            client = clients[current_index]
+            # Garantir tempo mínimo de processamento se especificado
+            if min_processing_time > 0:
+                elapsed_time = (datetime.now() - start_time).total_seconds()
+                if elapsed_time < min_processing_time:
+                    remaining_time = min_processing_time - elapsed_time
+                    logger.info(f"⏱️ Aguardando {remaining_time:.1f}s para completar tempo mínimo")
+                    await asyncio.sleep(remaining_time)
             
-            # Define função de busca
-            tools = [{
-                "type": "function",
-                "function": {
-                    "name": "google_search",
-                    "description": "Busca informações atualizadas na internet sobre mercado brasileiro",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "Termo de busca específico para o mercado brasileiro"
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                }
-            }]
-
-            messages = [{"role": "user", "content": prompt}]
-            iteration = 0
-
-            while iteration < max_iterations:
-                iteration += 1
-                logger.info(f"🔄 Iteração OpenRouter {iteration}/{max_iterations}")
-
-                try:
-                    response = client.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        tools=tools,
-                        tool_choice="auto",
-                        max_tokens=None,  # SEM LIMITAÇÃO DE TOKENS
-                        temperature=0.8
-                    )
-
-                    message = response.choices[0].message
-
-                    # Verifica tool calls
-                    if hasattr(message, "tool_calls") and message.tool_calls:
-                        tool_call = message.tool_calls[0]
-
-                        if tool_call.function.name == "google_search":
-                            args = json.loads(tool_call.function.arguments)
-                            search_query = args.get("query", "")
-
-                            logger.info(f"🔍 IA {provider['description']} solicitou busca: {search_query}")
-
-                            # Executa busca real
-                            search_results = await self._execute_real_search(search_query, session_id)
-
-                            # Adiciona à conversa
-                            messages.append({
-                                "role": "assistant",
-                                "tool_calls": [{
-                                    "id": tool_call.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": "google_search",
-                                        "arguments": tool_call.function.arguments
-                                    }
-                                }]
-                            })
-
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": search_results
-                            })
-
-                            continue
-
-                    # Resposta final
-                    final_response = message.content
-                    logger.info(f"✅ {provider['description']} geração concluída em {iteration} iterações")
-                    
-                    # Atualiza índice para próxima chamada (rotação)
-                    provider["current_client_index"] = (current_index + 1) % len(clients)
-                    
-                    return final_response
-
-                except Exception as e:
-                    error_msg = str(e)
-                    if "429" in error_msg or "quota" in error_msg.lower() or "rate_limit" in error_msg.lower():
-                        logger.warning(f"⚠️ {provider['description']} rate limit, tentando próxima chave")
-                        
-                        # Tenta próxima chave
-                        provider["current_client_index"] = (current_index + 1) % len(clients)
-                        
-                        # Se já tentou todas as chaves, marca como indisponível temporariamente
-                        if provider["current_client_index"] == current_index:
-                            logger.error(f"❌ Todas as chaves {provider['description']} esgotadas")
-                            provider["available"] = False
-                            
-                            # Tenta fallback para outro provedor
-                            if provider_key == "openrouter_grok" and "openrouter_gemini" in self.providers:
-                                logger.info("🔄 Fallback: Grok → Gemini")
-                                return await self._generate_openrouter_with_tools(prompt, max_iterations, session_id, "openrouter_gemini")
-                            elif provider_key == "openrouter_gemini" and "gemini" in self.providers:
-                                logger.info("🔄 Fallback: OpenRouter Gemini → Gemini Direto")
-                                return await self._generate_gemini_with_tools(prompt, max_iterations, session_id)
-                            
-                            raise Exception(f"Todos os provedores OpenRouter esgotados")
-                        
-                        continue
-                    else:
-                        logger.error(f"❌ Erro {provider['description']}: {e}")
+            logger.info("✅ Geração com busca ativa concluída")
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na geração com busca ativa: {e}")
+            # Fallback simples
+            try:
+                return await self.generate_text(enhanced_prompt, system_prompt)
+            except Exception as e2:
+                logger.error(f"❌ Erro no fallback: {e2}")
+                raise
+    
+    def _extract_search_terms(self, prompt: str) -> List[str]:
+        """Extrai termos de busca relevantes do prompt"""
+        # Implementação básica - pode ser melhorada
+        search_terms = []
+        
+        # Buscar por palavras-chave comuns
+        keywords = ['mercado', 'brasil', 'tendências', 'estatísticas', 'dados', 'análise']
+        
+        for keyword in keywords:
+            if keyword in prompt.lower():
+                # Extrair contexto ao redor da palavra-chave
+                words = prompt.lower().split()
+                for i, word in enumerate(words):
+                    if keyword in word:
+                        # Pegar 2 palavras antes e depois
+                        start = max(0, i-2)
+                        end = min(len(words), i+3)
+                        search_term = ' '.join(words[start:end])
+                        search_terms.append(search_term)
                         break
+        
+        # Se não encontrou termos específicos, usar primeiras palavras
+        if not search_terms:
+            words = prompt.split()[:5]
+            search_terms.append(' '.join(words))
+        
+        return search_terms[:3]  # Máximo 3 buscas
 
-            # Se chegou ao limite de iterações
-            logger.warning(f"⚠️ Limite de iterações atingido ({max_iterations}) para {provider['description']}")
-            return f"Análise realizada com {provider['description']} e busca ativa."
+    async def analyze_content(
+        self,
+        content: str,
+        analysis_type: str = "comprehensive",
+        target_audience: str = "general",
+        model_preference: str = None
+    ) -> str:
+        """
+        Analisa conteúdo usando hierarquia OpenRouter
+        
+        Args:
+            content: Conteúdo para análise
+            analysis_type: Tipo de análise (comprehensive, viral, market, etc.)
+            target_audience: Público-alvo
+            model_preference: Preferência de modelo
+        
+        Returns:
+            Análise detalhada do conteúdo
+        """
+        system_prompt = f"""Você é um especialista em análise de conteúdo digital e marketing.
+        Sua função é analisar conteúdo de forma {analysis_type} para o público {target_audience}.
+        Forneça insights acionáveis, tendências identificadas e recomendações estratégicas."""
+        
+        analysis_prompt = f"""
+Analise o seguinte conteúdo de forma {analysis_type}:
 
+CONTEÚDO:
+{content}
+
+PÚBLICO-ALVO: {target_audience}
+
+FORNEÇA:
+1. Análise detalhada do conteúdo
+2. Pontos fortes e fracos identificados
+3. Potencial viral e engajamento
+4. Recomendações de melhoria
+5. Estratégias de distribuição
+6. Insights de mercado relevantes
+
+Seja específico, prático e acionável em suas recomendações.
+"""
+        
+        try:
+            return await self.generate_text(
+                prompt=analysis_prompt,
+                system_prompt=system_prompt,
+                max_tokens=3000,
+                temperature=0.7,
+                model_override=model_preference
+            )
         except Exception as e:
-            logger.error(f"❌ Erro no {provider_key} com ferramentas: {e}")
-            
-            # Fallback automático
-            if provider_key == "openrouter_grok" and "openrouter_gemini" in self.providers:
-                logger.info("🔄 Fallback automático: Grok → Gemini")
-                return await self._generate_openrouter_with_tools(prompt, max_iterations, session_id, "openrouter_gemini")
-            
+            logger.error(f"❌ Erro na análise de conteúdo: {e}")
             raise
 
-    async def _execute_real_search(self, search_query: str, session_id: str = None) -> str:
-        """Executa busca real usando o orquestrador"""
+    async def generate_insights(
+        self,
+        data: Dict[str, Any],
+        insight_type: str = "market_trends",
+        depth: str = "deep"
+    ) -> str:
+        """
+        Gera insights baseados em dados usando hierarquia OpenRouter
+        
+        Args:
+            data: Dados para análise
+            insight_type: Tipo de insight desejado
+            depth: Profundidade da análise (shallow, medium, deep)
+        
+        Returns:
+            Insights gerados
+        """
+        system_prompt = f"""Você é um analista de dados especializado em {insight_type}.
+        Sua função é gerar insights {depth} baseados nos dados fornecidos.
+        Sempre forneça análises precisas, tendências identificadas e recomendações acionáveis."""
+        
+        data_str = json.dumps(data, indent=2, ensure_ascii=False)
+        
+        insights_prompt = f"""
+Analise os seguintes dados e gere insights {depth} sobre {insight_type}:
 
-        if not self.search_orchestrator:
-            return f"Busca não disponível para: {search_query}"
+DADOS:
+{data_str}
 
+FORNEÇA:
+1. Principais tendências identificadas
+2. Padrões e correlações importantes
+3. Oportunidades de mercado
+4. Riscos e desafios
+5. Recomendações estratégicas
+6. Previsões baseadas nos dados
+
+Seja específico, use números quando relevante e forneça insights acionáveis.
+"""
+        
         try:
-            # Executa busca massiva real
-            search_results = await self.search_orchestrator.execute_massive_real_search(
-                query=search_query,
-                context={"ai_requested": True},
-                session_id=session_id or "ai_search"
+            return await self.generate_text(
+                prompt=insights_prompt,
+                system_prompt=system_prompt,
+                max_tokens=4000,
+                temperature=0.6
             )
-
-            # Formata resultados para a IA
-            formatted_results = self._format_search_results_for_ai(search_results)
-
-            return formatted_results
-
         except Exception as e:
-            logger.error(f"❌ Erro na busca real: {e}")
-            return f"Erro na busca para \'{search_query}\': {str(e)}"
+            logger.error(f"❌ Erro na geração de insights: {e}")
+            raise
 
-    def _format_search_results_for_ai(self, search_results: Dict[str, Any]) -> str:
-        """Formata resultados de busca para consumo da IA"""
+    def get_status(self) -> Dict[str, Any]:
+        """Retorna status do gerenciador"""
+        return {
+            "gemini_status": self.gemini_client.get_status(),
+            "search_orchestrator_available": self.search_orchestrator is not None,
+            "timestamp": datetime.now().isoformat()
+        }
 
-        formatted = """
-RESULTADOS DA BUSCA REAL:
-Query: {query}
-Fontes encontradas: {total_sources}
+    def reset_failed_models(self):
+        """Reseta estatísticas do cliente Gemini"""
+        self.gemini_client.stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "key_rotations": 0,
+            "last_used_key": None
+        }
+        logger.info("✅ Estatísticas Gemini resetadas")
 
-""".format(
-            query=search_results.get("query", ""),
-            total_sources=search_results.get("statistics", {}).get("total_sources", 0)
-        )
-
-        # Web results
-        web_results = search_results.get("web_results", [])
-        if web_results:
-            formatted += "=== RESULTADOS WEB ===\n"
-            for i, result in enumerate(web_results[:10], 1):
-                formatted += f"{i}. {result.get('title', 'Sem título')}\n"
-                formatted += f"   URL: {result.get('url', '')}\n"
-                formatted += f"   Resumo: {result.get('snippet', '')[:200]}...\n\n"
-
-        # YouTube results
-        youtube_results = search_results.get("youtube_results", [])
-        if youtube_results:
-            formatted += "=== RESULTADOS YOUTUBE ===\n"
-            for i, result in enumerate(youtube_results[:5], 1):
-                formatted += f"{i}. {result.get('title', 'Sem título')}\n"
-                formatted += f"   Canal: {result.get('channel', '')}\n"
-                formatted += f"   Views: {result.get('view_count', 0):,}\n"
-                formatted += f"   Likes: {result.get('like_count', 0):,}\n\n"
-
-        # Social results
-        social_results = search_results.get("social_results", [])
-        if social_results:
-            formatted += "=== RESULTADOS REDES SOCIAIS ===\n"
-            for i, result in enumerate(social_results[:5], 1):
-                formatted += f"{i}. {result.get('title', 'Sem título')}\n"
-                formatted += f"   Plataforma: {result.get('platform', '')}\n"
-                formatted += f"   Engajamento: {result.get('viral_score', 0):.1f}/10\n\n"
-
-        # Conteúdo viral
-        viral_content = search_results.get("viral_content", [])
-        if viral_content:
-            formatted += "=== CONTEÚDO VIRAL ===\n"
-            for i, content in enumerate(viral_content[:5], 1):
-                formatted += f"{i}. {content.get('title', 'Sem título')}\n"
-                formatted += f"   URL: {content.get('url', '')}\n"
-                formatted += f"   Plataforma: {content.get('platform', '')}\n"
-                formatted += f"   Viral Score: {content.get('viral_score', 0):.1f}/10\n\n"
-
-        # Screenshots
-        screenshots = search_results.get("screenshots_captured", [])
-        if screenshots:
-            formatted += "=== SCREENSHOTS CAPTURADOS ===\n"
-            for i, screenshot_path in enumerate(screenshots[:5], 1):
-                formatted += f"{i}. {screenshot_path}\n"
-            formatted += "\n"
-
-        return formatted
-
-    # Método para 'generate_text' - SEM LIMITAÇÃO DE TOKENS
-    async def generate_text(self, prompt: str, max_tokens: int = None, temperature: float = 0.7) -> str:
-        """Gera texto usando o melhor provedor disponível - SEM LIMITAÇÃO DE TOKENS"""
-        provider_name = self._get_best_provider(require_tools=False)
-
-        if not provider_name:
-            logger.warning("⚠️ Nenhum provedor disponível")
-            return "Erro: Nenhum provedor de IA disponível para gerar texto."
-
-        provider = self.providers[provider_name]
-        logger.info(f"🚀 Usando {provider_name} para geração de texto SEM LIMITAÇÃO DE TOKENS")
-
-        try:
-            # OpenRouter Grok (Primária)
-            if provider_name == "openrouter_grok":
-                clients = provider["clients"]
-                current_index = provider["current_client_index"]
-                total_keys = provider["total_keys"]
-                
-                logger.info(f"🚀 X-AI GROK-4-FAST: SEM limitação de tokens, temp={temperature}")
-                logger.info(f"📊 Modelo: {provider['model']}")
-                logger.info(f"📝 Prompt size: {len(prompt)} chars")
-                logger.info(f"🔄 Usando chave API {current_index + 1}/{total_keys}")
-                
-                for attempt in range(total_keys):
-                    try:
-                        client = clients[current_index]
-                        response = client.chat.completions.create(
-                            model=provider["model"],
-                            messages=[{"role": "user", "content": prompt}],
-                            max_tokens=max_tokens,  # None = sem limitação
-                            temperature=temperature
-                        )
-                        
-                        result = response.choices[0].message.content
-                        logger.info(f"✅ Grok resposta gerada: {len(result)} chars, {len(result.split())} palavras")
-                        return result
-                        
-                    except Exception as e:
-                        logger.warning(f"⚠️ Erro Grok chave {current_index + 1}: {e}")
-                        current_index = (current_index + 1) % total_keys
-                        provider["current_client_index"] = current_index
-                        
-                        if attempt == total_keys - 1:
-                            logger.error("❌ Todas as chaves Grok falharam, tentando fallback")
-                            raise e
-
-            # OpenRouter Gemini (Fallback)
-            elif provider_name == "openrouter_gemini":
-                clients = provider["clients"]
-                current_index = provider["current_client_index"]
-                total_keys = provider["total_keys"]
-                
-                logger.info(f"🔄 GEMINI FALLBACK: SEM limitação de tokens, temp={temperature}")
-                logger.info(f"📊 Modelo: {provider['model']}")
-                logger.info(f"🔄 Usando chave API {current_index + 1}/{total_keys}")
-                
-                for attempt in range(total_keys):
-                    try:
-                        client = clients[current_index]
-                        response = client.chat.completions.create(
-                            model=provider["model"],
-                            messages=[{"role": "user", "content": prompt}],
-                            max_tokens=max_tokens,  # None = sem limitação
-                            temperature=temperature
-                        )
-                        
-                        result = response.choices[0].message.content
-                        logger.info(f"✅ Gemini OpenRouter resposta: {len(result)} chars, {len(result.split())} palavras")
-                        return result
-                        
-                    except Exception as e:
-                        logger.warning(f"⚠️ Erro Gemini OpenRouter chave {current_index + 1}: {e}")
-                        current_index = (current_index + 1) % total_keys
-                        provider["current_client_index"] = current_index
-                        
-                        if attempt == total_keys - 1:
-                            raise e
-
-            # Gemini Direto (Backup)
-            elif provider_name == "gemini":
-                model = genai.GenerativeModel("gemini-2.0-flash-exp")
-                
-                # Configuração sem limitação de tokens
-                generation_config = genai.types.GenerationConfig(
-                    temperature=temperature,
-                )
-                
-                # Só define max_output_tokens se especificado
-                if max_tokens is not None:
-                    generation_config.max_output_tokens = max_tokens
-                
-                logger.info(f"🔄 GEMINI DIRETO: SEM limitação de tokens, temp={temperature}")
-                
-                response = model.generate_content(
-                    prompt,
-                    generation_config=generation_config
-                )
-                result = response.text
-                logger.info(f"✅ Gemini Direto resposta: {len(result)} chars, {len(result.split())} palavras")
-                return result
-
-            # Groq (Desabilitado mas mantido para compatibilidade)
-            elif provider_name == "groq":
-                client = provider["client"]
-                logger.info(f"🔄 GROQ: SEM limitação de tokens, temp={temperature}")
-                
-                response = client.chat.completions.create(
-                    model=provider["model"],
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_tokens,  # None = sem limitação
-                    temperature=temperature
-                )
-                
-                result = response.choices[0].message.content
-                logger.info(f"✅ Groq resposta: {len(result)} chars, {len(result.split())} palavras")
-                return result
-
-            # OpenAI removido conforme solicitado - não está sendo usado
-
-        except Exception as e:
-            logger.error(f"❌ Erro na geração de texto com {provider_name}: {e}")
-            
-            # Fallback automático para próximo provedor disponível
-            if provider_name == "openrouter_grok":
-                logger.info("🔄 Fallback automático: Grok → Gemini OpenRouter")
-                if "openrouter_gemini" in self.providers and self.providers["openrouter_gemini"]["available"]:
-                    return await self.generate_text(prompt, max_tokens, temperature)
-            elif provider_name == "openrouter_gemini":
-                logger.info("🔄 Fallback automático: Gemini OpenRouter → Gemini Direto")
-                if "gemini" in self.providers and self.providers["gemini"]["available"]:
-                    return await self.generate_text(prompt, max_tokens, temperature)
-            
-            return f"Erro na geração: {str(e)}"
-
-        return "Erro: Método de geração não implementado para este provedor"
-
-
-# Instância global
+# Instância global para uso em todo o projeto
 enhanced_ai_manager = EnhancedAIManager()
+
+# Funções de conveniência para uso direto
+async def generate_ai_text(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
+    model_override: Optional[str] = None
+) -> str:
+    """Função de conveniência para geração de texto"""
+    return await enhanced_ai_manager.generate_text(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        max_tokens=max_tokens,
+        temperature=temperature
+    )
+
+def generate_ai_text_sync(
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    max_tokens: Optional[int] = None,
+    temperature: Optional[float] = None,
+    model_override: Optional[str] = None
+) -> str:
+    """Função de conveniência síncrona para geração de texto"""
+    return enhanced_ai_manager.generate_text_sync(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        max_tokens=max_tokens,
+        temperature=temperature
+    )
+
+if __name__ == "__main__":
+    # Teste básico
+    async def test():
+        try:
+            manager = EnhancedAIManager()
+            
+            response = await manager.generate_text(
+                prompt="Explique brevemente o que é inteligência artificial",
+                system_prompt="Você é um especialista em tecnologia"
+            )
+            print(f"Resposta: {response}")
+            
+            # Status
+            status = manager.get_status()
+            print(f"Status: {json.dumps(status, indent=2, default=str)}")
+            
+        except Exception as e:
+            print(f"Erro no teste: {e}")
+    
+    asyncio.run(test())

@@ -1027,7 +1027,7 @@ class AvatarGenerationSystem:
         Salva os 4 avatares gerados
         """
         try:
-            session_dir = f"/workspace/project/v110/analyses_data/{session_id}"
+            session_dir = f"/workspace/project/V189/analyses_data/{session_id}"
             avatares_dir = os.path.join(session_dir, 'avatares')
             os.makedirs(avatares_dir, exist_ok=True)
             # Salvar cada avatar individualmente

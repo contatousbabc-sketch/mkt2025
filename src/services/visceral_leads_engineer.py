@@ -9,9 +9,10 @@ import logging
 import time
 import json
 import pandas as pd
+import asyncio
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from services.ai_manager import ai_manager
+from services.openrouter_hierarchy_manager import openrouter_manager
 from services.auto_save_manager import salvar_etapa, salvar_erro
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class VisceralLeadsEngineer:
         
         logger.info("🧠 MESTRE DA PERSUASÃO VISCERAL inicializado")
     
-    def reverse_engineer_leads(
+    async def reverse_engineer_leads(
         self,
         leads_data: str,
         context_data: Dict[str, Any],
@@ -63,8 +64,13 @@ class VisceralLeadsEngineer:
             # Constrói prompt visceral ultra-detalhado
             visceral_prompt = self._build_visceral_prompt(processed_leads, context_data)
             
-            # Executa engenharia reversa com IA
-            response = ai_manager.generate_analysis(visceral_prompt, max_tokens=8192)
+            # Executa engenharia reversa com IA usando hierarquia OpenRouter
+            response = await openrouter_manager.generate_with_hierarchy(
+                prompt=visceral_prompt,
+                max_tokens=8192,
+                temperature=0.8,
+                context="visceral_leads_analysis"
+            )
             
             if not response:
                 raise Exception("MESTRE VISCERAL FALHOU: IA não respondeu")

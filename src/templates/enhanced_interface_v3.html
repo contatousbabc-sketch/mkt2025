@@ -1090,6 +1090,25 @@
                 </button>
             </div>
 
+            <!-- Verificação AI -->
+            <div class="step-card" id="aiVerificationCard">
+                <div class="step-number">🤖</div>
+                <h3 class="step-title">Verificação AI</h3>
+                <p class="step-description">
+                    Verificação inteligente dos dados coletados usando múltiplas camadas de IA antes da geração final
+                </p>
+                <div class="step-features">
+                    <span class="feature-tag">🧠 Análise de Sentimento</span>
+                    <span class="feature-tag">🔍 Detecção de Viés</span>
+                    <span class="feature-tag">✅ Validação LLM</span>
+                    <span class="feature-tag">📊 Filtros Avançados</span>
+                </div>
+                <button class="step-btn" id="aiVerificationBtn" onclick="startAIVerification()">
+                    <i class="fas fa-robot"></i>
+                    <span>Verificar com IA</span>
+                </button>
+            </div>
+
             <!-- Etapa 3 -->
             <div class="step-card" id="step3Card">
                 <div class="step-number">3</div>
@@ -1132,6 +1151,8 @@
                 <div class="step-indicator" id="indicator1">1</div>
                 <div class="step-line"></div>
                 <div class="step-indicator" id="indicator2">2</div>
+                <div class="step-line"></div>
+                <div class="step-indicator" id="indicatorAI">🤖</div>
                 <div class="step-line"></div>
                 <div class="step-indicator" id="indicator3">3</div>
             </div>
@@ -1677,6 +1698,41 @@
             }
         }
 
+        async function startAIVerification() {
+            if (!currentSessionId) {
+                showNotification('Execute as etapas anteriores primeiro', 'warning');
+                return;
+            }
+
+            try {
+                setStepLoading('aiVerification', true);
+                showNotification('Verificação AI iniciada: Analisando dados...', 'info');
+                updateStepStatus('aiVerification', 'running');
+
+                const response = await fetch('/api/workflow/external_ai_verification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: currentSessionId })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification('Verificação AI em andamento!', 'success');
+                    // O monitoramento cuidará da conclusão
+                } else {
+                    showNotification('Erro na Verificação AI: ' + result.error, 'error');
+                    setStepLoading('aiVerification', false);
+                    updateStepStatus('aiVerification', 'error');
+                }
+            } catch (error) {
+                console.error('Erro na Verificação AI:', error);
+                showNotification('Erro ao iniciar Verificação AI', 'error');
+                setStepLoading('aiVerification', false);
+                updateStepStatus('aiVerification', 'error');
+            }
+        }
+
         async function startStep3() {
             if (!currentSessionId) {
                 showNotification('Execute as etapas anteriores primeiro', 'warning');
@@ -1726,7 +1782,8 @@
         }
 
         function setStepLoading(stepNumber, isLoading) {
-            const button = document.getElementById('step' + stepNumber + 'Btn');
+            let buttonId = stepNumber === 'aiVerification' ? 'aiVerificationBtn' : 'step' + stepNumber + 'Btn';
+            const button = document.getElementById(buttonId);
             const spinner = document.createElement('div');
             spinner.className = 'loading-spinner';
             spinner.style.display = isLoading ? 'inline-block' : 'none';
@@ -1744,12 +1801,15 @@
         }
         
         function updateStepStatus(stepNumber, status) {
-            const card = document.getElementById('step' + stepNumber + 'Card');
+            let cardId = stepNumber === 'aiVerification' ? 'aiVerificationCard' : 'step' + stepNumber + 'Card';
+            let buttonId = stepNumber === 'aiVerification' ? 'aiVerificationBtn' : 'step' + stepNumber + 'Btn';
+            
+            const card = document.getElementById(cardId);
             if (card) {
                 card.className = 'step-card ' + status; // Limpa classes e adiciona a nova
             }
             
-            const button = document.getElementById('step' + stepNumber + 'Btn');
+            const button = document.getElementById(buttonId);
             if (button) {
                 if (status === 'completed') {
                     button.disabled = false; // Mantém habilitado mesmo após conclusão
@@ -1767,7 +1827,8 @@
         }
         
         function updateStepIndicator(stepNumber, status) {
-            const indicator = document.getElementById('indicator' + stepNumber);
+            let indicatorId = stepNumber === 'aiVerification' ? 'indicatorAI' : 'indicator' + stepNumber;
+            const indicator = document.getElementById(indicatorId);
             if (indicator) {
                 indicator.className = 'step-indicator'; // Reseta
                 if (status === 'completed') {
@@ -1854,8 +1915,14 @@
 
                     if (status.step_status && status.step_status.step2 === 'completed') {
                         updateStepStatus(2, 'completed');
+                        enableStepButton('aiVerification');
+                        console.log('✅ Etapa 2 concluída - habilitando Verificação AI');
+                    }
+
+                    if (status.ai_verification_completed) {
+                        updateStepStatus('aiVerification', 'completed');
                         enableStepButton(3);
-                        console.log('✅ Etapa 2 concluída - habilitando Etapa 3');
+                        console.log('✅ Verificação AI concluída - habilitando Etapa 3');
                     }
 
                     if (status.step_status && status.step_status.step3 === 'completed') {
@@ -1873,13 +1940,14 @@
         }
 
         function enableStepButton(stepNumber) {
-            const button = document.querySelector('#step' + stepNumber + 'Btn');
+            let buttonId = stepNumber === 'aiVerification' ? 'aiVerificationBtn' : '#step' + stepNumber + 'Btn';
+            const button = document.querySelector(buttonId.startsWith('#') ? buttonId : '#' + buttonId);
             if (button) {
                 button.disabled = false;
                 button.classList.remove('disabled'); // Remove classe disabled se houver
                 const spinner = button.querySelector('.loading-spinner');
                 if (spinner) spinner.style.display = 'none'; // Esconde spinner se estiver visível
-                console.log('🔓 Botão da Etapa ' + stepNumber + ' habilitado');
+                console.log('🔓 Botão ' + (stepNumber === 'aiVerification' ? 'da Verificação AI' : 'da Etapa ' + stepNumber) + ' habilitado');
             }
         }
 
@@ -2053,11 +2121,13 @@
                 // Reset step cards and buttons
                 updateStepStatus(1, '');
                 updateStepStatus(2, '');
+                updateStepStatus('aiVerification', '');
                 updateStepStatus(3, '');
                 
                 // Mantém todos os botões sempre habilitados
                 document.getElementById('step1Btn').disabled = false;
                 document.getElementById('step2Btn').disabled = false;
+                document.getElementById('aiVerificationBtn').disabled = false;
                 document.getElementById('step3Btn').disabled = false;
 
                 // Limpa campos do formulário (opcional, pode ser sobrescrito ao carregar config)
@@ -2113,6 +2183,493 @@
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
+    </script>
+
+    <!-- Chat Flutuante -->
+    <div id="chatContainer" class="chat-container">
+        <div id="chatToggle" class="chat-toggle" onclick="toggleChat()">
+            <i class="fas fa-comments"></i>
+            <span class="chat-badge" id="chatBadge" style="display: none;">1</span>
+        </div>
+        
+        <div id="chatWindow" class="chat-window" style="display: none;">
+            <div class="chat-header">
+                <div class="chat-title">
+                    <i class="fas fa-robot"></i>
+                    <span>UBIE Assistant</span>
+                </div>
+                <div class="chat-actions">
+                    <button onclick="clearChat()" class="chat-action-btn" title="Limpar conversa">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <button onclick="toggleChat()" class="chat-action-btn" title="Fechar">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="chatMessages" class="chat-messages">
+                <div class="chat-message bot-message">
+                    <div class="message-avatar">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="message-content">
+                        <div class="message-text">
+                            Olá! Sou o UBIE, seu assistente especializado em análise de mercado e marketing digital. Como posso ajudar você hoje?
+                        </div>
+                        <div class="message-time">Agora</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <input type="text" id="chatInput" class="chat-input" 
+                           placeholder="Digite sua mensagem..." 
+                           onkeypress="handleChatKeyPress(event)">
+                    <button onclick="sendChatMessage()" class="chat-send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                <div id="chatTyping" class="chat-typing" style="display: none;">
+                    <div class="typing-indicator">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <span>UBIE está digitando...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Chat Styles */
+        .chat-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .chat-toggle {
+            width: 60px;
+            height: 60px;
+            background: var(--gradient-primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: var(--shadow-lg);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .chat-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .chat-toggle i {
+            color: white;
+            font-size: 24px;
+        }
+
+        .chat-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: var(--error-color);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .chat-window {
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 380px;
+            height: 500px;
+            background: var(--bg-secondary);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-2xl);
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: var(--gradient-primary);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: white;
+            font-weight: 600;
+        }
+
+        .chat-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .chat-action-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .chat-action-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .chat-message {
+            display: flex;
+            gap: 10px;
+            max-width: 85%;
+        }
+
+        .chat-message.user-message {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .bot-message .message-avatar {
+            background: var(--gradient-primary);
+            color: white;
+        }
+
+        .user-message .message-avatar {
+            background: var(--gradient-accent);
+            color: white;
+        }
+
+        .message-content {
+            flex: 1;
+        }
+
+        .message-text {
+            background: var(--bg-tertiary);
+            padding: 12px 15px;
+            border-radius: 15px;
+            color: var(--text-primary);
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .user-message .message-text {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 5px;
+            text-align: right;
+        }
+
+        .user-message .message-time {
+            text-align: left;
+        }
+
+        .chat-input-container {
+            padding: 15px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 25px;
+            padding: 12px 15px;
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .chat-input:focus {
+            border-color: var(--primary-color);
+        }
+
+        .chat-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .chat-send-btn {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-primary);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        .chat-send-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .chat-typing {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 3px;
+        }
+
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* Responsivo */
+        @media (max-width: 768px) {
+            .chat-window {
+                width: 320px;
+                height: 450px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .chat-container {
+                bottom: 10px;
+                right: 10px;
+            }
+            
+            .chat-window {
+                width: calc(100vw - 20px);
+                height: 400px;
+                right: -10px;
+            }
+        }
+    </style>
+
+    <script>
+        // Chat Variables
+        let chatSessionId = null;
+        let chatOpen = false;
+
+        // Chat Functions
+        function toggleChat() {
+            const chatWindow = document.getElementById('chatWindow');
+            const chatToggle = document.getElementById('chatToggle');
+            
+            chatOpen = !chatOpen;
+            
+            if (chatOpen) {
+                chatWindow.style.display = 'flex';
+                chatToggle.style.transform = 'scale(0.9)';
+                document.getElementById('chatInput').focus();
+                
+                // Inicializa sessão de chat se necessário
+                if (!chatSessionId) {
+                    chatSessionId = 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                }
+            } else {
+                chatWindow.style.display = 'none';
+                chatToggle.style.transform = 'scale(1)';
+            }
+        }
+
+        function handleChatKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendChatMessage();
+            }
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Limpa input
+            input.value = '';
+            
+            // Adiciona mensagem do usuário
+            addChatMessage(message, 'user');
+            
+            // Mostra indicador de digitação
+            showTypingIndicator();
+            
+            try {
+                const response = await fetch('/api/chat/send', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: chatSessionId,
+                        context: {
+                            current_session: currentSessionId,
+                            page: 'main_interface'
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Remove indicador de digitação
+                hideTypingIndicator();
+                
+                if (data.success) {
+                    // Adiciona resposta do bot
+                    addChatMessage(data.response, 'bot', data.metadata);
+                } else {
+                    addChatMessage('Desculpe, ocorreu um erro. Tente novamente.', 'bot');
+                }
+                
+            } catch (error) {
+                console.error('Erro no chat:', error);
+                hideTypingIndicator();
+                addChatMessage('Erro de conexão. Verifique sua internet e tente novamente.', 'bot');
+            }
+        }
+
+        function addChatMessage(message, sender, metadata = {}) {
+            const messagesContainer = document.getElementById('chatMessages');
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${sender}-message`;
+            
+            const avatar = sender === 'user' ? 
+                '<i class="fas fa-user"></i>' : 
+                '<i class="fas fa-robot"></i>';
+            
+            const time = new Date().toLocaleTimeString('pt-BR', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            messageDiv.innerHTML = `
+                <div class="message-avatar">
+                    ${avatar}
+                </div>
+                <div class="message-content">
+                    <div class="message-text">${message}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+            `;
+            
+            messagesContainer.appendChild(messageDiv);
+            
+            // Scroll para baixo
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            document.getElementById('chatTyping').style.display = 'flex';
+        }
+
+        function hideTypingIndicator() {
+            document.getElementById('chatTyping').style.display = 'none';
+        }
+
+        async function clearChat() {
+            if (!chatSessionId) return;
+            
+            try {
+                await fetch(`/api/chat/clear/${chatSessionId}`, {
+                    method: 'POST'
+                });
+                
+                // Limpa mensagens visualmente
+                const messagesContainer = document.getElementById('chatMessages');
+                messagesContainer.innerHTML = `
+                    <div class="chat-message bot-message">
+                        <div class="message-avatar">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="message-content">
+                            <div class="message-text">
+                                Conversa limpa! Como posso ajudar você?
+                            </div>
+                            <div class="message-time">Agora</div>
+                        </div>
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Erro ao limpar chat:', error);
+            }
+        }
+
+        // Inicialização do chat
+        document.addEventListener('DOMContentLoaded', function() {
+            // Chat já inicializado
+        });
     </script>
 
 </body>

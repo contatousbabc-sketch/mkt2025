@@ -220,24 +220,6 @@ class VisualContentCapture:
                 content_type = response.headers.get('content-type', '').lower()
                 logger.info(f"📄 Content-Type: {content_type}")
                 
-                # CORREÇÃO: Verifica se está recebendo HTML em vez de imagem
-                if 'text/html' in content_type or 'text/plain' in content_type:
-                    logger.warning(f"⚠️ Recebendo HTML/texto em vez de imagem: {content_type}")
-                    # Lê uma pequena amostra para confirmar
-                    sample = response.content[:500].decode('utf-8', errors='ignore').lower()
-                    if '<html' in sample or '<!doctype' in sample or '<body' in sample:
-                        logger.warning(f"⚠️ Confirmado: resposta é HTML, não imagem. Pulando...")
-                        continue  # Tenta próxima tentativa
-                
-                # Verifica se Content-Type é de imagem válida
-                valid_image_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml']
-                if not any(img_type in content_type for img_type in valid_image_types):
-                    logger.warning(f"⚠️ Content-Type não é de imagem válida: {content_type}")
-                    # Se não tem Content-Type de imagem, verifica pela URL
-                    if not any(ext in image_url.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp', '.gif']):
-                        logger.warning(f"⚠️ URL também não parece ser de imagem. Pulando...")
-                        continue
-                
                 # Determina extensão baseada no Content-Type e URL
                 extension = '.jpg'  # Default
                 if 'jpeg' in content_type or 'jpg' in content_type:
@@ -282,13 +264,6 @@ class VisualContentCapture:
                             with open(image_path, 'rb') as f:
                                 header = f.read(50)
                                 
-                            # CORREÇÃO: Verifica primeiro se é HTML
-                            header_text = header.decode('utf-8', errors='ignore').lower()
-                            if '<html' in header_text or '<!doctype' in header_text or '<body' in header_text:
-                                logger.warning(f"⚠️ Arquivo baixado é HTML, não imagem!")
-                                image_path.unlink()  # Remove arquivo inválido
-                                continue  # Tenta próxima tentativa
-                            
                             # Assinaturas de arquivos de imagem
                             image_signatures = [
                                 b'\xff\xd8\xff',  # JPEG
@@ -296,8 +271,6 @@ class VisualContentCapture:
                                 b'GIF8',  # GIF
                                 b'RIFF',  # WebP (starts with RIFF)
                                 b'<svg',  # SVG
-                                b'BM',    # BMP
-                                b'\x00\x00\x01\x00',  # ICO
                             ]
                             
                             is_valid_image = any(header.startswith(sig) for sig in image_signatures)
@@ -306,8 +279,7 @@ class VisualContentCapture:
                                 logger.info(f"✅ DOWNLOAD SUCESSO: {image_path} ({file_size:,} bytes)")
                                 return True
                             else:
-                                logger.warning(f"⚠️ Arquivo não parece ser uma imagem válida (assinatura não reconhecida)")
-                                logger.info(f"🔍 Primeiros bytes: {header[:20]}")
+                                logger.warning(f"⚠️ Arquivo não parece ser uma imagem válida")
                                 image_path.unlink()  # Remove arquivo inválido
                         except Exception as e:
                             logger.warning(f"⚠️ Erro na validação da imagem: {e}")
@@ -357,38 +329,6 @@ class VisualContentCapture:
             chrome_options.add_argument("--disable-images")  # Para economizar banda
             chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
             
-            # Correções para erros específicos de GPU, WebGL e GCM
-            chrome_options.add_argument("--disable-webgl")
-            chrome_options.add_argument("--disable-webgl2")
-            chrome_options.add_argument("--disable-3d-apis")
-            chrome_options.add_argument("--disable-accelerated-2d-canvas")
-            chrome_options.add_argument("--disable-accelerated-jpeg-decoding")
-            chrome_options.add_argument("--disable-accelerated-mjpeg-decode")
-            chrome_options.add_argument("--disable-accelerated-video-decode")
-            chrome_options.add_argument("--disable-accelerated-video-encode")
-            chrome_options.add_argument("--disable-gpu-sandbox")
-            chrome_options.add_argument("--disable-software-rasterizer")
-            chrome_options.add_argument("--disable-background-timer-throttling")
-            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-            chrome_options.add_argument("--disable-renderer-backgrounding")
-            chrome_options.add_argument("--disable-features=TranslateUI,BlinkGenPropertyTrees")
-            chrome_options.add_argument("--disable-ipc-flooding-protection")
-            chrome_options.add_argument("--disable-default-apps")
-            chrome_options.add_argument("--disable-sync")
-            chrome_options.add_argument("--disable-background-networking")
-            chrome_options.add_argument("--disable-component-update")
-            chrome_options.add_argument("--disable-client-side-phishing-detection")
-            chrome_options.add_argument("--disable-hang-monitor")
-            chrome_options.add_argument("--disable-popup-blocking")
-            chrome_options.add_argument("--disable-prompt-on-repost")
-            chrome_options.add_argument("--disable-domain-reliability")
-            chrome_options.add_argument("--disable-component-extensions-with-background-pages")
-            chrome_options.add_argument("--no-first-run")
-            chrome_options.add_argument("--no-default-browser-check")
-            chrome_options.add_argument("--no-pings")
-            chrome_options.add_argument("--no-zygote")
-            chrome_options.add_argument("--single-process")  # Força processo único para evitar problemas de GPU
-            
             # Usa selenium_checker para configuração robusta
             from .selenium_checker import selenium_checker
             
@@ -437,7 +377,7 @@ class VisualContentCapture:
             raise
 
     def _take_screenshot(self, url: str, filename: str, session_dir: Path) -> Dict[str, Any]:
-        """Captura screenshot com PRIORIDADE para Google Images"""
+        """Captura screenshot com PRIORIDADE para Google Images e detecção de páginas de login"""
         
         # PRIORIDADE 1: SEMPRE tenta Google Images primeiro (para qualquer URL)
         logger.info(f"🎯 ESTRATÉGIA PRIORITÁRIA: Google Images para {url}")
@@ -465,6 +405,23 @@ class VisualContentCapture:
             
             # Aguarda um pouco mais para renderização completa
             time.sleep(2)
+            
+            # NOVA FUNCIONALIDADE: Detectar páginas de login/bloqueio
+            if self._is_login_or_blocked_page():
+                logger.warning(f"🚫 PÁGINA DE LOGIN/BLOQUEIO DETECTADA: {url}")
+                # Tenta estratégias alternativas
+                alternative_result = self._try_alternative_content_extraction(url, filename, session_dir)
+                if alternative_result and alternative_result.get('success'):
+                    return alternative_result
+                
+                # Se não conseguir alternativa, retorna erro específico
+                return {
+                    'success': False,
+                    'error': 'login_page_detected',
+                    'url': url,
+                    'message': 'Página de login ou bloqueio detectada - screenshot não capturado',
+                    'timestamp': datetime.now().isoformat()
+                }
             
             # Captura informações da página
             page_title = self.driver.title or "Sem título"
@@ -606,12 +563,13 @@ class VisualContentCapture:
         """
         logger.info(f"🎯 Selecionando top {max_urls} URLs mais relevantes")
         
-        # Verifica se all_results é um dicionário ou lista
+        # Handle both dict and list formats
         if isinstance(all_results, dict):
             all_urls = all_results.get('consolidated_urls', [])
         elif isinstance(all_results, list):
             all_urls = all_results
         else:
+            logger.warning(f"⚠️ Formato inesperado de all_results: {type(all_results)}")
             all_urls = []
         
         if not all_urls:
@@ -672,6 +630,219 @@ class VisualContentCapture:
                 
         except Exception as e:
             logger.error(f"❌ Erro na limpeza: {e}")
+
+    def _is_login_or_blocked_page(self) -> bool:
+        """Detecta se a página atual é uma página de login ou bloqueio"""
+        try:
+            # Verifica o título da página
+            page_title = self.driver.title.lower() if self.driver.title else ""
+            
+            # Palavras-chave que indicam páginas de login/bloqueio
+            login_keywords = [
+                'login', 'sign in', 'log in', 'entrar', 'acesso', 'authentication',
+                'blocked', 'bloqueado', 'access denied', 'acesso negado',
+                'captcha', 'robot', 'verification', 'verificação',
+                'forbidden', 'proibido', '403', '401', 'unauthorized',
+                'please sign in', 'faça login', 'entre na sua conta'
+            ]
+            
+            # Verifica título
+            for keyword in login_keywords:
+                if keyword in page_title:
+                    logger.info(f"🚫 Palavra-chave de login detectada no título: '{keyword}'")
+                    return True
+            
+            # Verifica URL atual
+            current_url = self.driver.current_url.lower()
+            url_login_keywords = [
+                '/login', '/signin', '/auth', '/accounts/login',
+                '/user/login', '/entrar', '/acesso'
+            ]
+            
+            for keyword in url_login_keywords:
+                if keyword in current_url:
+                    logger.info(f"🚫 Palavra-chave de login detectada na URL: '{keyword}'")
+                    return True
+            
+            # Verifica elementos na página
+            try:
+                # Procura por campos de login típicos
+                login_elements = [
+                    'input[type="password"]',
+                    'input[name*="password"]',
+                    'input[name*="login"]',
+                    'input[name*="email"]',
+                    'input[name*="username"]',
+                    'button[type="submit"]',
+                    '.login-form',
+                    '.signin-form',
+                    '#login',
+                    '#signin'
+                ]
+                
+                login_element_count = 0
+                for selector in login_elements:
+                    try:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                        if elements:
+                            login_element_count += len(elements)
+                    except:
+                        continue
+                
+                # Se encontrar muitos elementos de login, provavelmente é uma página de login
+                if login_element_count >= 2:
+                    logger.info(f"🚫 {login_element_count} elementos de login detectados na página")
+                    return True
+                
+                # Verifica texto específico na página
+                try:
+                    body_text = self.driver.find_element(By.TAG_NAME, "body").text.lower()
+                    login_text_keywords = [
+                        'please sign in', 'faça login', 'entre na sua conta',
+                        'access denied', 'acesso negado', 'login required',
+                        'you need to sign in', 'você precisa fazer login'
+                    ]
+                    
+                    for keyword in login_text_keywords:
+                        if keyword in body_text:
+                            logger.info(f"🚫 Texto de login detectado: '{keyword}'")
+                            return True
+                            
+                except:
+                    pass
+                    
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao verificar elementos de login: {e}")
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na detecção de página de login: {e}")
+            return False
+
+    def _try_alternative_content_extraction(self, url: str, filename: str, session_dir: Path) -> Dict[str, Any]:
+        """Tenta estratégias alternativas quando detecta página de login"""
+        logger.info(f"🔄 Tentando extração alternativa para: {url}")
+        
+        # Estratégia 1: Busca no Google Images com domínio específico
+        try:
+            from urllib.parse import urlparse
+            domain = urlparse(url).netloc
+            
+            # Cria query específica para o domínio
+            domain_query = f"site:{domain} screenshot content"
+            
+            logger.info(f"🎯 Tentando Google Images com query específica: {domain_query}")
+            google_result = self._try_google_images_with_query(domain_query, filename, session_dir)
+            
+            if google_result and google_result.get('success'):
+                logger.info(f"✅ SUCESSO com Google Images alternativo")
+                return google_result
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Erro na estratégia alternativa 1: {e}")
+        
+        # Estratégia 2: Tenta acessar com User-Agent diferente
+        try:
+            logger.info(f"🔄 Tentando com User-Agent alternativo")
+            
+            # Salva configuração atual
+            original_user_agent = self.driver.execute_script("return navigator.userAgent;")
+            
+            # Tenta com User-Agent de bot/crawler
+            self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+                "userAgent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+            })
+            
+            # Tenta acessar novamente
+            self.driver.get(url)
+            time.sleep(3)
+            
+            # Verifica se ainda é página de login
+            if not self._is_login_or_blocked_page():
+                logger.info(f"✅ User-Agent alternativo funcionou!")
+                
+                # Captura screenshot
+                screenshot_path = session_dir / f"{filename}_alt.png"
+                self.driver.save_screenshot(str(screenshot_path))
+                
+                if screenshot_path.exists() and screenshot_path.stat().st_size > 0:
+                    return {
+                        'success': True,
+                        'url': url,
+                        'title': self.driver.title or "Conteúdo alternativo",
+                        'description': "Capturado com User-Agent alternativo",
+                        'filename': f"{filename}_alt.png",
+                        'filepath': str(screenshot_path),
+                        'filesize': screenshot_path.stat().st_size,
+                        'method': 'alternative_user_agent',
+                        'timestamp': datetime.now().isoformat()
+                    }
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erro na estratégia alternativa 2: {e}")
+        
+        # Se todas as estratégias falharam
+        logger.warning(f"⚠️ Todas as estratégias alternativas falharam para: {url}")
+        return {'success': False, 'error': 'all_alternative_strategies_failed'}
+
+    def _try_google_images_with_query(self, query: str, filename: str, session_dir: Path) -> Dict[str, Any]:
+        """Busca imagens no Google com query específica"""
+        try:
+            if not self.serper_api_keys:
+                return {'success': False, 'error': 'no_serper_keys'}
+            
+            import requests
+            
+            api_key = self.serper_api_keys[self.current_serper_index % len(self.serper_api_keys)]
+            
+            url = "https://google.serper.dev/images"
+            payload = {
+                "q": query,
+                "num": 5,
+                "safe": "off",
+                "gl": "br",
+                "hl": "pt-br",
+                "imgSize": "large"
+            }
+            headers = {'X-API-KEY': api_key, 'Content-Type': 'application/json'}
+            
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                images = data.get('images', [])
+                
+                for i, image in enumerate(images, 1):
+                    image_url = image.get('imageUrl')
+                    if not image_url:
+                        continue
+                    
+                    success = self._download_image_from_url(image_url, f"{filename}_alt_{i}", session_dir)
+                    if success:
+                        for ext in ['.jpg', '.png', '.webp', '.jpeg']:
+                            screenshot_path = session_dir / f"{filename}_alt_{i}{ext}"
+                            if screenshot_path.exists():
+                                final_path = session_dir / f"{filename}_alt{ext}"
+                                screenshot_path.rename(final_path)
+                                
+                                return {
+                                    'success': True,
+                                    'image_source': image_url,
+                                    'title': f"Imagem alternativa via Google Images",
+                                    'description': f"Query: {query}",
+                                    'filename': final_path.name,
+                                    'filepath': str(final_path),
+                                    'filesize': final_path.stat().st_size,
+                                    'method': 'google_images_alternative',
+                                    'timestamp': datetime.now().isoformat()
+                                }
+            
+            return {'success': False, 'error': 'google_images_alternative_failed'}
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na busca alternativa do Google Images: {e}")
+            return {'success': False, 'error': str(e)}
 
 # Instância global
 visual_content_capture = VisualContentCapture()

@@ -109,7 +109,7 @@ class ComprehensiveReportGeneratorV3:
                 raise Exception(f"Diretório da sessão não encontrado: {session_dir}")
 
             # 2. Carrega módulos disponíveis
-            available_modules = self._load_available_modules(modules_dir)
+            available_modules = self._load_available_modules(modules_dir, session_id)
 
             # 3. Carrega screenshots disponíveis
             screenshot_paths = self._load_screenshot_paths(files_dir)
@@ -172,7 +172,7 @@ class ComprehensiveReportGeneratorV3:
                 return f"# ERRO\n\nDiretório da sessão não encontrado: {session_dir}"
 
             # 2. Carrega módulos disponíveis
-            available_modules = self._load_available_modules(modules_dir)
+            available_modules = self._load_available_modules(modules_dir, session_id)
 
             # 3. Carrega screenshots disponíveis
             screenshot_paths = self._load_screenshot_paths(files_dir)
@@ -188,7 +188,7 @@ class ComprehensiveReportGeneratorV3:
             logger.error(f"❌ Erro ao obter conteúdo do relatório: {e}")
             return f"# ERRO\n\nErro ao gerar relatório: {str(e)}"
 
-    def _load_available_modules(self, modules_dir: Path) -> Dict[str, str]:
+    def _load_available_modules(self, modules_dir: Path, session_id: str) -> Dict[str, str]:
         """Carrega módulos disponíveis"""
         available_modules = {}
 
@@ -222,7 +222,16 @@ class ComprehensiveReportGeneratorV3:
                         except Exception as e:
                             logger.warning(f"⚠️ Erro ao carregar módulo JSON {module_name}: {e}")
                     else:
-                        logger.warning(f"⚠️ Módulo não encontrado: {module_name}")
+                        # Para módulos CPL, tenta carregar do diretório de CPLs
+                        if module_name.startswith('cpl_'):
+                            cpl_content = self._load_cpl_module(session_id, module_name)
+                            if cpl_content:
+                                available_modules[module_name] = cpl_content
+                                logger.debug(f"✅ Módulo CPL carregado: {module_name}")
+                            else:
+                                logger.warning(f"⚠️ Módulo CPL não encontrado: {module_name}")
+                        else:
+                            logger.warning(f"⚠️ Módulo não encontrado: {module_name}")
 
             logger.info(f"📊 {len(available_modules)}/{len(self.modules_order)} módulos carregados")
             return available_modules
@@ -230,6 +239,91 @@ class ComprehensiveReportGeneratorV3:
         except Exception as e:
             logger.error(f"❌ Erro ao carregar módulos: {e}")
             return available_modules
+    
+    def _load_cpl_module(self, session_id: str, module_name: str) -> str:
+        """Carrega módulo CPL do diretório específico de CPLs"""
+        try:
+            # Tentar carregar do diretório sessions/{session_id}/cpls/
+            cpl_dir = Path(f"sessions/{session_id}/cpls")
+            
+            # Mapear nomes de módulos para arquivos
+            module_file_map = {
+                'cpl_protocol_1': 'arquitetura_evento.md',
+                'cpl_protocol_2': 'cpl1.md',
+                'cpl_protocol_3': 'cpl2.md',
+                'cpl_protocol_4': 'cpl3.md',
+                'cpl_protocol_5': 'cpl4.md',
+                'cpl_completo': 'cpl_completo.json'
+            }
+            
+            filename = module_file_map.get(module_name)
+            if not filename:
+                return None
+            
+            file_path = cpl_dir / filename
+            
+            if file_path.exists():
+                if filename.endswith('.json'):
+                    # Carregar e formatar JSON
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        json_content = json.load(f)
+                        return self._format_cpl_json_content(json_content)
+                else:
+                    # Carregar arquivo MD
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        return f.read()
+            
+            # Fallback: tentar carregar arquivo com nome do módulo
+            fallback_md = cpl_dir / f"{module_name}.md"
+            fallback_json = cpl_dir / f"{module_name}.json"
+            
+            if fallback_md.exists():
+                with open(fallback_md, 'r', encoding='utf-8') as f:
+                    return f.read()
+            elif fallback_json.exists():
+                with open(fallback_json, 'r', encoding='utf-8') as f:
+                    json_content = json.load(f)
+                    return self._format_cpl_json_content(json_content)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao carregar módulo CPL {module_name}: {e}")
+            return None
+    
+    def _format_cpl_json_content(self, json_content: Dict[str, Any]) -> str:
+        """Formata conteúdo JSON de CPL para exibição em markdown"""
+        try:
+            formatted = ""
+            
+            # Extrair informações principais
+            if 'cpl_completo' in json_content:
+                cpl_data = json_content['cpl_completo']
+                
+                if 'arquitetura_evento' in cpl_data:
+                    formatted += "### Arquitetura do Evento\n\n"
+                    arch = cpl_data['arquitetura_evento']
+                    if 'conteudo' in arch:
+                        formatted += f"{arch['conteudo']}\n\n"
+                
+                # Adicionar cada CPL
+                for cpl_num in ['cpl1', 'cpl2', 'cpl3', 'cpl4']:
+                    if cpl_num in cpl_data:
+                        cpl_info = cpl_data[cpl_num]
+                        if 'fase' in cpl_info:
+                            formatted += f"### {cpl_info['fase']}\n\n"
+                        if 'conteudo' in cpl_info:
+                            formatted += f"{cpl_info['conteudo']}\n\n"
+            
+            # Se não conseguir extrair estrutura específica, usar formato genérico
+            if not formatted:
+                formatted = json.dumps(json_content, indent=2, ensure_ascii=False)
+            
+            return formatted
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao formatar conteúdo JSON: {e}")
+            return json.dumps(json_content, indent=2, ensure_ascii=False)
 
     def _load_screenshot_paths(self, files_dir: Path) -> List[str]:
         """Carrega caminhos dos screenshots"""
@@ -399,7 +493,7 @@ Este relatório consolida a análise ultra-detalhada realizada pelo sistema ARQV
             return f"*Erro ao formatar conteúdo do módulo CPL: {str(e)}*\n\n{json.dumps(cpl_content, indent=2, ensure_ascii=False)}"
 
     def _save_final_report(self, session_id: str, report_content: str) -> str:
-        """Salva relatório final"""
+        """Salva relatório final em Markdown e HTML"""
         try:
             # Salva relatório compilado
             os.makedirs(f"analyses_data/{session_id}", exist_ok=True)
@@ -408,11 +502,205 @@ Este relatório consolida a análise ultra-detalhada realizada pelo sistema ARQV
             with open(final_report_path, 'w', encoding='utf-8') as f:
                 f.write(report_content)
 
+            # 🆕 GERA AUTOMATICAMENTE O HTML
+            html_content = self._convert_markdown_to_html(report_content, session_id)
+            html_report_path = f"analyses_data/{session_id}/relatorio_final.html"
+            
+            with open(html_report_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            
+            logger.info(f"✅ Relatório HTML gerado automaticamente: {html_report_path}")
+
             return str(final_report_path)
 
         except Exception as e:
             logger.error(f"❌ Erro ao salvar relatório: {e}")
             raise
+
+    def _convert_markdown_to_html(self, markdown_content: str, session_id: str) -> str:
+        """Converte conteúdo Markdown para HTML profissional"""
+        try:
+            # Template HTML profissional
+            html_template = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Análise de Mercado - {session_id}</title>
+    <style>
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }}
+        .container {{
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }}
+        h2 {{
+            color: #34495e;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+            margin-top: 30px;
+        }}
+        h3 {{
+            color: #2c3e50;
+            margin-top: 25px;
+        }}
+        .module-section {{
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border-left: 4px solid #e74c3c;
+        }}
+        .stats-box {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }}
+        .screenshot-gallery {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }}
+        .screenshot-item {{
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }}
+        code {{
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }}
+        pre {{
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }}
+        .timestamp {{
+            color: #7f8c8d;
+            font-size: 0.9em;
+            text-align: right;
+            margin-top: 30px;
+            border-top: 1px solid #ecf0f1;
+            padding-top: 15px;
+        }}
+        ul, ol {{
+            padding-left: 25px;
+        }}
+        li {{
+            margin-bottom: 8px;
+        }}
+        blockquote {{
+            border-left: 4px solid #f39c12;
+            padding-left: 20px;
+            margin: 20px 0;
+            font-style: italic;
+            background: #fef9e7;
+            padding: 15px 20px;
+            border-radius: 0 8px 8px 0;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        {self._process_markdown_to_html(markdown_content)}
+        <div class="timestamp">
+            Relatório gerado automaticamente em {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}
+        </div>
+    </div>
+</body>
+</html>"""
+            return html_template
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao converter Markdown para HTML: {e}")
+            return f"<html><body><h1>Erro na conversão</h1><p>{str(e)}</p></body></html>"
+
+    def _process_markdown_to_html(self, markdown_content: str) -> str:
+        """Processa conteúdo Markdown para HTML"""
+        try:
+            html_content = markdown_content
+            
+            # Conversões básicas de Markdown para HTML
+            import re
+            
+            # Headers
+            html_content = re.sub(r'^# (.+)$', r'<h1>\1</h1>', html_content, flags=re.MULTILINE)
+            html_content = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html_content, flags=re.MULTILINE)
+            html_content = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html_content, flags=re.MULTILINE)
+            html_content = re.sub(r'^#### (.+)$', r'<h4>\1</h4>', html_content, flags=re.MULTILINE)
+            
+            # Bold e Italic
+            html_content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html_content)
+            html_content = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html_content)
+            
+            # Code blocks
+            html_content = re.sub(r'```([\\s\\S]*?)```', r'<pre><code>\1</code></pre>', html_content)
+            html_content = re.sub(r'`(.+?)`', r'<code>\1</code>', html_content)
+            
+            # Links
+            html_content = re.sub(r'\\[(.+?)\\]\\((.+?)\\)', r'<a href="\2">\1</a>', html_content)
+            
+            # Listas
+            lines = html_content.split('\\n')
+            processed_lines = []
+            in_list = False
+            
+            for line in lines:
+                if re.match(r'^\\s*[-*+]\\s+', line):
+                    if not in_list:
+                        processed_lines.append('<ul>')
+                        in_list = True
+                    item_text = re.sub(r'^\\s*[-*+]\\s+', '', line)
+                    processed_lines.append(f'<li>{item_text}</li>')
+                else:
+                    if in_list:
+                        processed_lines.append('</ul>')
+                        in_list = False
+                    processed_lines.append(line)
+            
+            if in_list:
+                processed_lines.append('</ul>')
+            
+            # Parágrafos
+            html_content = '\\n'.join(processed_lines)
+            paragraphs = html_content.split('\\n\\n')
+            processed_paragraphs = []
+            
+            for para in paragraphs:
+                para = para.strip()
+                if para and not para.startswith('<'):
+                    processed_paragraphs.append(f'<p>{para}</p>')
+                else:
+                    processed_paragraphs.append(para)
+            
+            return '\\n'.join(processed_paragraphs)
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao processar Markdown: {e}")
+            return markdown_content.replace('\\n', '<br>')
 
     def _generate_report_statistics(
         self, 

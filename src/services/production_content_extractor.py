@@ -9,7 +9,7 @@ Mantido apenas para compatibilidade
 from typing import Dict, List, Optional, Any
 import os
 import logging
-from .robust_content_extractor import robust_content_extractor
+# from .robust_content_extractor import robust_content_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class ProductionContentExtractor:
     def __init__(self):
         """Inicializa wrapper de compatibilidade"""
         logger.warning("⚠️ ProductionContentExtractor está DEPRECATED - usando RobustContentExtractor")
-        self.extractor = robust_content_extractor
+        # self.extractor = robust_content_extractor
 
     def extract_content(self, url: str) -> Optional[str]:
         """Redireciona para RobustContentExtractor"""

@@ -29,8 +29,7 @@ class APIConfigChecker:
                 'TAVILY_API_KEY'
             ],
             'database': [
-                'SUPABASE_URL',
-                'SUPABASE_KEY'
+                # Supabase removido conforme solicitado
             ]
         }
 
@@ -64,7 +63,7 @@ class APIConfigChecker:
                     category_result['missing'].append(api_key)
 
                     # Classificar como crítico ou opcional
-                    if api_key in ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'SUPABASE_URL']:
+                    if api_key in ['GEMINI_API_KEY', 'GOOGLE_API_KEY']:
                         results['missing_critical'].append(api_key)
                     else:
                         results['missing_optional'].append(api_key)
@@ -111,7 +110,7 @@ class APIConfigChecker:
             'ai_providers': "Configure provedores de IA em https://aistudio.google.com/app/apikey (Gemini) ou https://platform.openai.com/api-keys (OpenAI)",
             'social_apis': "Configure APIs sociais: YouTube (console.developers.google.com), Twitter (developer.twitter.com)",
             'search_apis': "Configure APIs de busca: Google Custom Search (console.developers.google.com/apis/api/customsearch.googleapis.com)",
-            'database': "Configure Supabase em https://supabase.com/dashboard/projects"
+            'database': "Banco de dados local configurado automaticamente"
         }
 
         return instructions_map.get(category, "Verifique a documentação da API correspondente")

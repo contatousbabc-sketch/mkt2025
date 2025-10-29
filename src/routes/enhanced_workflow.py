@@ -301,6 +301,65 @@ def start_step2_synthesis():
             "message": "Falha ao iniciar síntese"
         }), 500
 
+@enhanced_workflow_bp.route('/workflow/external_ai_verification', methods=['POST'])
+def run_external_ai_verification():
+    """VERIFICAÇÃO AI EXTERNA: Executa verificação dos dados antes da Etapa 3"""
+    try:
+        data = request.get_json()
+        session_id = data.get('session_id')
+        if not session_id:
+            return jsonify({"error": "session_id é obrigatório"}), 400
+
+        logger.info(f"🤖 VERIFICAÇÃO AI INICIADA - Sessão: {session_id}")
+
+        # Executa verificação em thread separada
+        def execute_verification_thread():
+            try:
+                import asyncio
+                from services.external_ai_integration import external_ai_integration
+
+                async def async_verification():
+                    result = await external_ai_integration.verify_session_data(session_id)
+
+                    # Salva resultado da verificação
+                    salvar_etapa("verificacao_ai_concluida", {
+                        "session_id": session_id,
+                        "verification_result": result,
+                        "timestamp": datetime.now().isoformat()
+                    }, categoria="workflow", session_id=session_id)
+
+                    logger.info(f"✅ VERIFICAÇÃO AI CONCLUÍDA - Sessão: {session_id}")
+
+                asyncio.run(async_verification())
+
+            except Exception as e:
+                logger.error(f"❌ Erro na verificação AI: {e}")
+                salvar_etapa("verificacao_ai_erro", {
+                    "session_id": session_id,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }, categoria="workflow", session_id=session_id)
+
+        # Inicia a thread para verificação
+        thread = threading.Thread(target=execute_verification_thread)
+        thread.start()
+
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "message": "Verificação AI iniciada em segundo plano",
+            "estimated_duration": "1-2 minutos",
+            "status_endpoint": f"/api/workflow/status/{session_id}"
+        }), 200
+
+    except Exception as e:
+        logger.error(f"❌ Erro ao iniciar verificação AI: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "message": "Falha ao iniciar verificação AI"
+        }), 500
+
 @enhanced_workflow_bp.route('/workflow/step3/start', methods=['POST'])
 def start_step3_generation():
     """ETAPA 3: Geração dos 16 Módulos e Relatório Final"""
@@ -309,7 +368,9 @@ def start_step3_generation():
         session_id = data.get('session_id')
         if not session_id:
             return jsonify({"error": "session_id é obrigatório"}), 400
+
         logger.info(f"📝 ETAPA 3 INICIADA - Geração para sessão: {session_id}")
+
         # Salva início da etapa 3
         salvar_etapa("etapa3_iniciada", {
             "session_id": session_id,
@@ -333,8 +394,7 @@ def start_step3_generation():
                     final_report = ""
                     try:
                         # Gera todos os 16 módulos
-                        topic = context.get('produto', context.get('query', 'análise de mercado'))
-                        modules_result = services['enhanced_module_processor'].generate_all_modules(session_id, topic)
+                        modules_result = await services['enhanced_module_processor'].generate_all_modules(session_id)
                         # Compila relatório final
                         final_report = services['comprehensive_report_generator_v3'].compile_final_markdown_report(session_id)
                     except Exception as e:
@@ -513,8 +573,7 @@ def start_full_workflow():
                     # ETAPA 3: Geração dos 16 Módulos e Relatório Final
                     logger.info(f"📝 INICIANDO ETAPA 3 (Workflow Completo) - Sessão: {session_id}")
                     try:
-                        topic = context.get('produto', context.get('query', 'análise de mercado'))
-                        modules_result = services['enhanced_module_processor'].generate_all_modules(session_id, topic)
+                        modules_result = await services['enhanced_module_processor'].generate_all_modules(session_id)
                         final_report = services['comprehensive_report_generator_v3'].compile_final_markdown_report(session_id)
                         salvar_etapa("etapa3_concluida_full_workflow", {
                             "session_id": session_id,
@@ -597,7 +656,7 @@ def get_workflow_status(session_id):
         # Verifica se etapa 2 foi concluída
         etapa2_file1 = f"analyses_data/workflow/{session_id}/etapa2_concluida_full_workflow.json"
         etapa2_file2 = f"analyses_data/workflow/{session_id}/etapa2_concluida.json"
-        
+
         if os.path.exists(etapa2_file1) or os.path.exists(etapa2_file2):
             status["step_status"]["step2"] = "completed"
             status["current_step"] = 2
@@ -605,6 +664,11 @@ def get_workflow_status(session_id):
             logger.info(f"✅ Etapa 2 detectada como concluída para sessão {session_id}")
             logger.info(f"   - Arquivo 1 existe: {os.path.exists(etapa2_file1)}")
             logger.info(f"   - Arquivo 2 existe: {os.path.exists(etapa2_file2)}")
+
+        # Verifica se verificação AI foi concluída
+        verificacao_ai_file = f"analyses_data/workflow/{session_id}/verificacao_ai_concluida.json"
+        status["ai_verification_completed"] = os.path.exists(verificacao_ai_file)
+
         # Verifica se etapa 3 foi concluída
         if os.path.exists(f"analyses_data/{session_id}/relatorio_final.md") or \
            os.path.exists(f"analyses_data/workflow/{session_id}/etapa3_concluida_full_workflow.json"):
@@ -647,24 +711,24 @@ def get_workflow_results(session_id):
             "screenshots_captured": 0
         }
         # Verifica relatório final
-        final_report_path = f"analyses_data/{session_id}/relatorio_final.md"
+        final_report_path = os.path.join("analyses_data", session_id, "relatorio_final.md")
         if os.path.exists(final_report_path):
             results["final_report_available"] = True
             results["final_report_path"] = final_report_path
         # Conta módulos gerados
-        modules_dir = f"analyses_data/{session_id}/modules"
+        modules_dir = os.path.join("analyses_data", session_id, "modules")
         if os.path.exists(modules_dir):
             modules = [f for f in os.listdir(modules_dir) if f.endswith('.md')]
             results["modules_generated"] = len(modules)
             results["modules_list"] = modules
         # Conta screenshots
-        files_dir = f"analyses_data/files/{session_id}"
+        files_dir = os.path.join("analyses_data", "files", session_id)
         if os.path.exists(files_dir):
             screenshots = [f for f in os.listdir(files_dir) if f.endswith('.png')]
             results["screenshots_captured"] = len(screenshots)
             results["screenshots_list"] = screenshots
         # Lista todos os arquivos disponíveis
-        session_dir = f"analyses_data/{session_id}"
+        session_dir = os.path.join("analyses_data", session_id)
         if os.path.exists(session_dir):
             for root, dirs, files in os.walk(session_dir):
                 for file in files:
@@ -853,8 +917,10 @@ def _generate_collection_report(
 """
     return report
 
-def _gerar_consolidacao_final_etapa1(session_id, search_results, viral_analysis, massive_results, viral_results: Dict) -> Dict[str, Any]:
+def _gerar_consolidacao_final_etapa1(session_id, search_results, viral_analysis, massive_results, viral_results: Dict = None) -> Dict[str, Any]:
     """Gera consolidação final de TODOS os dados coletados na Etapa 1"""
+    if viral_results is None:
+        viral_results = {} # Inicializa como dicionário vazio se não for fornecido
     try:
         consolidacao = {
             "session_id": session_id,
@@ -1042,7 +1108,8 @@ def _gerar_consolidacao_final_etapa1(session_id, search_results, viral_analysis,
             "etapa1_incluidos": len(consolidacao["etapa1_concluida_files"]),
         })
         # SALVA CONSOLIDAÇÃO COMPLETA
-        salvar_etapa("consolidacao_etapa1_final", consolidacao, categoria="workflow", session_id=session_id)
+        caminho_consolidacao = salvar_etapa("consolidacao_etapa1_final", consolidacao, categoria="workflow", session_id=session_id)
+        logger.info(f"✅ Consolidação final da Etapa 1 salva em: {caminho_consolidacao}")
         logger.info(f"🔗 CONSOLIDAÇÃO FINAL ETAPA 1: {total_dados} dados, {len(urls_unicas)} fontes únicas")
         logger.info(f"📁 Arquivos incluídos: {len(consolidacao['viral_results_files'])} viral, {len(consolidacao['trechos_extraidos'])} trechos, {len(consolidacao['res_busca_files'])} RES_BUSCA")
         return consolidacao

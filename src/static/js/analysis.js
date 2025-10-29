@@ -545,7 +545,7 @@ class ModernAnalysisSystem {
     async loadSavedSessions() {
         try {
             // Primeiro tenta o endpoint principal
-            let response = await fetch('/api/progress/sessions');
+            let response = await fetch('/api/sessions');
 
             if (!response.ok) {
                 // Fallback para endpoint alternativo
@@ -579,7 +579,7 @@ class ModernAnalysisSystem {
     }
 
     renderSessionsList() {
-        const container = document.getElementById('sessionsList');
+        const container = document.getElementById('savedSessions');
         if (!container) return;
 
         if (this.sessions.size === 0) {
@@ -619,7 +619,7 @@ class ModernAnalysisSystem {
     }
 
     renderEmptySessionsList() {
-        const container = document.getElementById('sessionsList');
+        const container = document.getElementById('savedSessions');
         if (!container) return;
 
         container.innerHTML = `

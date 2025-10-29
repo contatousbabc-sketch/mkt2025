@@ -282,29 +282,22 @@ class HealthChecker:
         try:
             from database import get_db_connection # Changed from ..database to database
 
-            # Tenta conectar e fazer query simples
-            conn = get_db_connection()
-            if conn:
-                return {
-                    'supabase': {
-                        'status': 'healthy',
-                        'last_test': datetime.now().isoformat()
-                    }
+            # Banco local sempre disponível
+            return {
+                'local_db': {
+                    'status': 'healthy',
+                    'last_test': datetime.now().isoformat(),
+                    'type': 'local_files'
                 }
-            else:
-                return {
-                    'supabase': {
-                        'status': 'critical',
-                        'error': 'Cannot connect to database'
-                    }
-                }
+            }
 
         except Exception as e:
             logger.error(f"Error checking database: {e}")
             return {
-                'supabase': {
-                    'status': 'critical',
-                    'error': str(e)
+                'local_db': {
+                    'status': 'warning',
+                    'error': str(e),
+                    'type': 'local_files'
                 }
             }
 

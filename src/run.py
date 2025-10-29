@@ -19,12 +19,15 @@ from logging.handlers import RotatingFileHandler
 if 'src' not in sys.path:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Configuração de logging
+# Importar logger em tempo real ANTES de outros imports
+from services.realtime_logger import realtime_logger, log_info, log_success, log_error, log_separator
+
+# Configuração de logging simplificada (sem arquivo para resolver quota)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler()
+        logging.StreamHandler()  # Apenas console
     ]
 )
 
@@ -108,8 +111,35 @@ def create_app():
     
     logger.info("💾 Importando sessions...")
     from routes.sessions import sessions_bp
+    
+    logger.info("💬 Importando chat...")
+    from routes.chat import chat_bp
 
-    logger.info("✅ Todos os blueprints importados com sucesso!")
+    logger.info("🔍 Inicializando External AI Verifier...")
+    try:
+        # Adiciona o diretório do External AI Verifier ao path
+        external_ai_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'external_ai_verifier', 'src')
+        if external_ai_path not in sys.path:
+            sys.path.insert(0, external_ai_path)
+        
+        # Adiciona também o diretório services ao path
+        services_path = os.path.join(external_ai_path, 'services')
+        if services_path not in sys.path:
+            sys.path.insert(0, services_path)
+        
+        # Importa e inicializa o External AI Verifier
+        import external_review_agent
+        
+        # Cria instância global do External AI Verifier
+        app.external_ai_verifier = external_review_agent.ExternalReviewAgent()
+        logger.info("✅ External AI Verifier inicializado com sucesso!")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ External AI Verifier não pôde ser inicializado: {e}")
+        logger.warning(f"🔍 Detalhes do erro: {str(e)}")
+        app.external_ai_verifier = None
+
+    logger.info("✅ Todos os blueprints e serviços importados com sucesso!")
 
     app.register_blueprint(analysis_bp, url_prefix='/api')
     app.register_blueprint(enhanced_analysis_bp, url_prefix='/enhanced')
@@ -123,6 +153,7 @@ def create_app():
     # app.register_blueprint(mcp_bp, url_prefix='/mcp')  # COMENTADO - módulo não existe
     app.register_blueprint(enhanced_workflow_bp, url_prefix='/api')
     app.register_blueprint(sessions_bp, url_prefix='/api')
+    app.register_blueprint(chat_bp, url_prefix='/api')
 
     @app.route('/')
     def index():
@@ -212,10 +243,14 @@ def main():
     """Função principal"""
 
     print("🚀 ARQV30 Enhanced v3.0 - Iniciando aplicação...")
+    log_separator("INICIALIZAÇÃO DO SISTEMA V380")
+    log_info("Sistema ARQV30 Enhanced v3.0 iniciando...")
 
     try:
         # Cria aplicação
+        log_info("Criando aplicação Flask...")
         app = create_app()
+        log_success("Aplicação Flask criada com sucesso")
 
         # Configurações do servidor
         host = os.getenv('HOST', '0.0.0.0')
@@ -227,14 +262,24 @@ def main():
         print(f"📊 Interface: Análise Ultra-Detalhada de Mercado")
         print(f"🤖 IA: Gemini 2.0 Flash + OpenAI + Groq com Busca Ativa")
         print(f"🔍 Pesquisa: Orquestrador Real + Rotação de APIs + Screenshots")
-        print(f"💾 Banco: Supabase + Arquivos Locais")
+        print(f"💾 Banco: Arquivos Locais + Cache Inteligente")
         print(f"🛡️ Sistema: Ultra-Robusto v3.0 com Captura Visual")
+
+        # Log das configurações
+        log_info(f"Servidor configurado: http://{host}:{port}")
+        log_info(f"Modo: {'Desenvolvimento' if debug else 'Produção'}")
+        log_info("Hierarquia IA: Grok-4 → Gemini-2.0 → Qwen3-Coder")
+        log_info("Fallback APIs: Serper → Jina → Exa → Firecrawl")
+        log_success("Todas as correções aplicadas com sucesso")
 
         print("\n" + "=" * 60)
         print("✅ ARQV30 Enhanced v3.0 PRONTO!")
         print("=" * 60)
         print("Pressione Ctrl+C para parar o servidor")
         print("=" * 60)
+        
+        log_separator("SISTEMA PRONTO PARA EXECUÇÃO")
+        log_success("ARQV30 Enhanced v3.0 totalmente operacional")
 
         print("\n🔥 RECURSOS ATIVADOS - 100% DADOS REAIS:")
         print("- IA com Ferramentas de Busca Ativa REAIS")

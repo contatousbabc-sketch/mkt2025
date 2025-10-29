@@ -79,6 +79,9 @@ class EnhancedAPIRotationManager:
             'apify': []  # Adicionado Apify
         }
         
+        # Propriedade providers para compatibilidade
+        self._providers = {}
+        
         # Definir cadeias de fallback (cada grupo é uma prioridade)
         self.fallback_chains = {
             'ai_models': [['qwen'], ['gemini'], ['openai'], ['groq'], ['deepseek']],
@@ -189,21 +192,23 @@ class EnhancedAPIRotationManager:
                     ))
                     logger.info(f"✅ EXA API {i} carregada")
             
-            # Serper - Apenas chaves válidas (testadas em 2025-09-21)
-            # ✅ Usando apenas a chave principal que tem créditos
-            serper_key = os.getenv('SERPER_API_KEY')
-            if serper_key and serper_key.strip():
-                # Verifica se a chave tem créditos antes de adicionar
-                if self._test_serper_key(serper_key):
+            # Serper - Substituto secundário - TODAS as chaves do .env
+            serper_keys = [
+                os.getenv('SERPER_API_KEY'),
+                os.getenv('SERPER_API_KEY_1'),
+                os.getenv('SERPER_API_KEY_2'),
+                os.getenv('SERPER_API_KEY_3')
+            ]
+            
+            for i, key in enumerate(serper_keys, 1):
+                if key and key.strip():
                     self.apis['serper'].append(APIEndpoint(
-                        name="serper_main",
-                        api_key=serper_key,
+                        name=f"serper_{i}",
+                        api_key=key,
                         base_url="https://google.serper.dev",
                         max_requests_per_minute=100
                     ))
-                    logger.info("✅ Serper API principal carregada e validada")
-                else:
-                    logger.warning("⚠️ Serper API principal sem créditos - removida da rotação")
+                    logger.info(f"✅ Serper API {i} carregada")
             
             # SerpAPI - Nova adição para busca Google
             serpapi_keys = [
@@ -360,37 +365,6 @@ class EnhancedAPIRotationManager:
         for service in self.apis:
             self.last_health_check[service] = datetime.now() - timedelta(minutes=10)
     
-    def _test_serper_key(self, api_key: str) -> bool:
-        """
-        Testa se uma chave Serper tem créditos disponíveis
-        Retorna True se a chave funciona, False caso contrário
-        """
-        try:
-            response = requests.post(
-                'https://google.serper.dev/search',
-                headers={'X-API-KEY': api_key, 'Content-Type': 'application/json'},
-                json={'q': 'test'},
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                logger.info(f"✅ Chave Serper validada com sucesso")
-                return True
-            elif response.status_code == 400:
-                error_msg = response.text
-                if "Not enough credits" in error_msg:
-                    logger.warning(f"❌ Chave Serper sem créditos: {error_msg}")
-                else:
-                    logger.warning(f"❌ Chave Serper inválida: {error_msg}")
-                return False
-            else:
-                logger.warning(f"❌ Chave Serper erro {response.status_code}: {response.text}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"❌ Erro ao testar chave Serper: {str(e)}")
-            return False
-    
     def get_active_api(self, service: str, force_check: bool = False) -> Optional[APIEndpoint]:
         """
         Retorna API ativa para o serviço especificado com rotação automática
@@ -486,28 +460,11 @@ class EnhancedAPIRotationManager:
                 if api.name == api_name:
                     api.error_count += 1
                     
-                    # ROTAÇÃO INTELIGENTE: Diferentes estratégias baseadas no tipo de erro
-                    error_str = str(error).lower()
+                    # Rotação IMEDIATA na primeira falha para garantir disponibilidade
+                    api.status = APIStatus.ERROR
+                    logger.warning(f"⚠️ API {api_name} marcada como ERROR - ROTAÇÃO IMEDIATA")
                     
-                    if "rate limit" in error_str or "429" in error_str:
-                        # Rate limit: marcar como rate limited por 1 minuto
-                        api.status = APIStatus.RATE_LIMITED
-                        api.rate_limit_reset = datetime.now() + timedelta(minutes=1)
-                        logger.warning(f"⚠️ API {api_name} rate limited - aguardando 1 minuto")
-                    elif "credits" in error_str or "quota" in error_str or "billing" in error_str:
-                        # Sem créditos: marcar como offline permanentemente
-                        api.status = APIStatus.OFFLINE
-                        logger.error(f"❌ API {api_name} sem créditos - marcada como OFFLINE")
-                    elif "401" in error_str or "403" in error_str or "unauthorized" in error_str:
-                        # Erro de autenticação: marcar como offline
-                        api.status = APIStatus.OFFLINE
-                        logger.error(f"❌ API {api_name} erro de autenticação - marcada como OFFLINE")
-                    else:
-                        # Erro temporário: marcar como erro mas permitir retry
-                        api.status = APIStatus.ERROR
-                        logger.warning(f"⚠️ API {api_name} erro temporário - tentará novamente")
-                    
-                    # Forçar rotação IMEDIATA para próxima API disponível
+                    # Forçar rotação para próxima API disponível
                     if len(self.apis[service]) > 1:
                         # Encontrar próxima API ativa
                         next_api_found = False
@@ -598,96 +555,6 @@ class EnhancedAPIRotationManager:
         # Se falhou, tentar fallback
         return self.get_fallback_api(service_type)
     
-    def get_best_api_for_load_balancing(self, service: str) -> Optional[APIEndpoint]:
-        """
-        NOVO: Balanceamento de carga inteligente
-        Seleciona a API com menor carga atual para distribuir requisições
-        """
-        with self.lock:
-            if service not in self.apis or not self.apis[service]:
-                return None
-            
-            available_apis = [api for api in self.apis[service] if self._is_api_available(api)]
-            
-            if not available_apis:
-                logger.warning(f"⚠️ Nenhuma API disponível para balanceamento em {service}")
-                return None
-            
-            # Calcular score de carga para cada API (menor é melhor)
-            def calculate_load_score(api: APIEndpoint) -> float:
-                score = 0.0
-                
-                # Penalizar por número de requisições recentes
-                score += api.requests_made * 0.1
-                
-                # Penalizar por erros recentes
-                score += api.error_count * 0.5
-                
-                # Bonificar APIs que não foram usadas recentemente
-                if api.last_used:
-                    minutes_since_use = (datetime.now() - api.last_used).total_seconds() / 60
-                    score -= minutes_since_use * 0.05  # Bonus por descanso
-                
-                # Penalizar se está próximo do rate limit
-                if api.requests_made > (api.max_requests_per_minute * 0.8):
-                    score += 2.0  # Penalidade alta se próximo do limite
-                
-                return score
-            
-            # Selecionar API com menor score (menor carga)
-            best_api = min(available_apis, key=calculate_load_score)
-            
-            # Atualizar estatísticas
-            best_api.last_used = datetime.now()
-            best_api.requests_made += 1
-            
-            # Atualizar índice atual para essa API
-            for i, api in enumerate(self.apis[service]):
-                if api.name == best_api.name:
-                    self.current_api_index[service] = i
-                    break
-            
-            logger.info(f"⚖️ Balanceamento: {best_api.name} selecionada para {service} (carga: {calculate_load_score(best_api):.2f})")
-            return best_api
-    
-    def get_api_statistics(self, service: str = None) -> Dict[str, Any]:
-        """
-        NOVO: Retorna estatísticas detalhadas das APIs
-        """
-        stats = {}
-        
-        services_to_check = [service] if service else self.apis.keys()
-        
-        for svc in services_to_check:
-            if svc not in self.apis:
-                continue
-                
-            svc_stats = {
-                'total_apis': len(self.apis[svc]),
-                'active_apis': len([api for api in self.apis[svc] if api.status == APIStatus.ACTIVE]),
-                'rate_limited_apis': len([api for api in self.apis[svc] if api.status == APIStatus.RATE_LIMITED]),
-                'error_apis': len([api for api in self.apis[svc] if api.status == APIStatus.ERROR]),
-                'offline_apis': len([api for api in self.apis[svc] if api.status == APIStatus.OFFLINE]),
-                'total_requests': sum(api.requests_made for api in self.apis[svc]),
-                'total_errors': sum(api.error_count for api in self.apis[svc]),
-                'apis_detail': []
-            }
-            
-            for api in self.apis[svc]:
-                api_detail = {
-                    'name': api.name,
-                    'status': api.status.value,
-                    'requests_made': api.requests_made,
-                    'error_count': api.error_count,
-                    'last_used': api.last_used.isoformat() if api.last_used else None,
-                    'rate_limit_reset': api.rate_limit_reset.isoformat() if api.rate_limit_reset else None
-                }
-                svc_stats['apis_detail'].append(api_detail)
-            
-            stats[svc] = svc_stats
-        
-        return stats
-    
     def get_fallback_model(self, model_name: str) -> tuple[str, Optional[APIEndpoint]]:
         """
         Método de compatibilidade para get_fallback_model
@@ -773,6 +640,287 @@ class EnhancedAPIRotationManager:
                     api.status = APIStatus.ACTIVE
         
         logger.info(f"✅ Erros resetados para: {', '.join(services_to_reset)}")
+    
+    @property
+    def providers(self) -> Dict[str, Any]:
+        """
+        Propriedade providers para compatibilidade com código legado
+        Mapeia APIs para formato esperado pelo código antigo
+        """
+        if not self._providers:
+            self._providers = {}
+            for service, apis in self.apis.items():
+                for api in apis:
+                    self._providers[api.name] = {
+                        'available': api.status == APIStatus.ACTIVE,
+                        'service': service,
+                        'api_key': api.api_key,
+                        'base_url': api.base_url,
+                        'status': api.status.value,
+                        'error_count': api.error_count
+                    }
+        return self._providers
+    
+    @providers.setter
+    def providers(self, value: Dict[str, Any]):
+        """Setter para propriedade providers"""
+        self._providers = value
+        # Sincronizar com estrutura interna
+        for provider_name, provider_data in value.items():
+            service = provider_data.get('service')
+            if service and service in self.apis:
+                for api in self.apis[service]:
+                    if api.name == provider_name:
+                        api.status = APIStatus.ACTIVE if provider_data.get('available', True) else APIStatus.ERROR
+                        break
+    
+    async def generate_text(self, prompt: str, model: str = None, **kwargs) -> str:
+        """
+        Método generate_text para compatibilidade com código legado
+        Usa rotação automática de APIs para geração de texto
+        """
+        try:
+            # Determinar tipo de serviço baseado no modelo
+            service_type = 'ai_generation'
+            if model:
+                if 'qwen' in model.lower():
+                    service_type = 'ai_generation'
+                elif 'gemini' in model.lower():
+                    service_type = 'ai_generation'
+                elif 'gpt' in model.lower():
+                    service_type = 'ai_generation'
+            
+            # Obter API com fallback automático
+            api = self.get_api_with_fallback(service_type)
+            if not api:
+                raise Exception("Nenhuma API disponível para geração de texto")
+            
+            # Fazer chamada para API
+            response = await self._make_api_call(api, prompt, model, **kwargs)
+            
+            if response:
+                logger.info(f"✅ Texto gerado com sucesso via {api.name}")
+                return response
+            else:
+                raise Exception(f"Falha na geração de texto via {api.name}")
+                
+        except Exception as e:
+            logger.error(f"❌ Erro na geração de texto: {e}")
+            # Tentar fallback se disponível
+            try:
+                fallback_api = self.get_fallback_api(service_type)
+                if fallback_api and fallback_api != api:
+                    response = await self._make_api_call(fallback_api, prompt, model, **kwargs)
+                    if response:
+                        logger.info(f"✅ Texto gerado via fallback {fallback_api.name}")
+                        return response
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback também falhou: {fallback_error}")
+            
+            # Se tudo falhar, retornar resposta estruturada básica
+            return self._generate_fallback_response(prompt)
+    
+    async def _make_api_call(self, api: APIEndpoint, prompt: str, model: str = None, **kwargs) -> str:
+        """
+        Faz chamada para API específica
+        """
+        try:
+            if 'qwen' in api.name or 'openrouter' in api.name:
+                return await self._call_openrouter_api(api, prompt, model, **kwargs)
+            elif 'gemini' in api.name:
+                return await self._call_gemini_api(api, prompt, **kwargs)
+            elif 'groq' in api.name:
+                return await self._call_groq_api(api, prompt, model, **kwargs)
+            elif 'openai' in api.name:
+                return await self._call_openai_api(api, prompt, model, **kwargs)
+            else:
+                logger.warning(f"⚠️ Tipo de API não reconhecido: {api.name}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Erro na chamada da API {api.name}: {e}")
+            # Marcar API como com erro
+            self.mark_api_error(api.name.split('_')[0], api.name, e)
+            raise e
+    
+    async def _call_openrouter_api(self, api: APIEndpoint, prompt: str, model: str = None, **kwargs) -> str:
+        """Chama API do OpenRouter"""
+        try:
+            import aiohttp
+            
+            headers = {
+                'Authorization': f'Bearer {api.api_key}',
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://arqv30.com',
+                'X-Title': 'ARQV30 Enhanced'
+            }
+            
+            data = {
+                'model': model or 'qwen/qwen-2.5-72b-instruct',
+                'messages': [{'role': 'user', 'content': prompt}],
+                'max_tokens': kwargs.get('max_tokens', 4000),
+                'temperature': kwargs.get('temperature', 0.7)
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{api.base_url}/chat/completions",
+                    headers=headers,
+                    json=data,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return result['choices'][0]['message']['content']
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"OpenRouter API error {response.status}: {error_text}")
+                        
+        except Exception as e:
+            logger.error(f"❌ Erro na chamada OpenRouter: {e}")
+            raise e
+    
+    async def _call_gemini_api(self, api: APIEndpoint, prompt: str, **kwargs) -> str:
+        """Chama API do Gemini"""
+        try:
+            import aiohttp
+            
+            url = f"{api.base_url}/models/gemini-2.0-flash-exp:generateContent?key={api.api_key}"
+            
+            data = {
+                'contents': [{
+                    'parts': [{'text': prompt}]
+                }],
+                'generationConfig': {
+                    'maxOutputTokens': kwargs.get('max_tokens', 4000),
+                    'temperature': kwargs.get('temperature', 0.7)
+                }
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url,
+                    json=data,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return result['candidates'][0]['content']['parts'][0]['text']
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"Gemini API error {response.status}: {error_text}")
+                        
+        except Exception as e:
+            logger.error(f"❌ Erro na chamada Gemini: {e}")
+            raise e
+    
+    async def _call_groq_api(self, api: APIEndpoint, prompt: str, model: str = None, **kwargs) -> str:
+        """Chama API do Groq"""
+        try:
+            import aiohttp
+            
+            headers = {
+                'Authorization': f'Bearer {api.api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            data = {
+                'model': model or 'llama-3.1-70b-versatile',
+                'messages': [{'role': 'user', 'content': prompt}],
+                'max_tokens': kwargs.get('max_tokens', 4000),
+                'temperature': kwargs.get('temperature', 0.7)
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{api.base_url}/chat/completions",
+                    headers=headers,
+                    json=data,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return result['choices'][0]['message']['content']
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"Groq API error {response.status}: {error_text}")
+                        
+        except Exception as e:
+            logger.error(f"❌ Erro na chamada Groq: {e}")
+            raise e
+    
+    async def _call_openai_api(self, api: APIEndpoint, prompt: str, model: str = None, **kwargs) -> str:
+        """Chama API do OpenAI"""
+        try:
+            import aiohttp
+            
+            headers = {
+                'Authorization': f'Bearer {api.api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            data = {
+                'model': model or 'gpt-3.5-turbo',
+                'messages': [{'role': 'user', 'content': prompt}],
+                'max_tokens': kwargs.get('max_tokens', 4000),
+                'temperature': kwargs.get('temperature', 0.7)
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{api.base_url}/chat/completions",
+                    headers=headers,
+                    json=data,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return result['choices'][0]['message']['content']
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"OpenAI API error {response.status}: {error_text}")
+                        
+        except Exception as e:
+            logger.error(f"❌ Erro na chamada OpenAI: {e}")
+            raise e
+    
+    def _generate_fallback_response(self, prompt: str) -> str:
+        """
+        Gera resposta estruturada básica quando todas as APIs falham
+        """
+        logger.warning("⚠️ Gerando resposta estruturada básica - todas as APIs falharam")
+        
+        # Análise básica do prompt para gerar resposta relevante
+        if 'análise' in prompt.lower() or 'mercado' in prompt.lower():
+            return """
+            **ANÁLISE DE MERCADO - MODO OFFLINE**
+            
+            ⚠️ **AVISO**: Esta análise foi gerada em modo offline devido a indisponibilidade temporária das APIs de IA.
+            
+            **Recomendações Gerais:**
+            - Realizar pesquisa de mercado detalhada
+            - Analisar concorrência direta e indireta
+            - Identificar público-alvo específico
+            - Desenvolver proposta de valor única
+            - Testar MVP com grupo focal
+            
+            **Próximos Passos:**
+            - Aguardar reconexão das APIs para análise completa
+            - Coletar dados primários do mercado
+            - Validar hipóteses com dados reais
+            """
+        
+        return f"""
+        **RESPOSTA ESTRUTURADA BÁSICA**
+        
+        ⚠️ **AVISO**: Resposta gerada em modo offline.
+        
+        **Análise do Prompt:**
+        {prompt[:200]}...
+        
+        **Recomendação:**
+        Aguarde a reconexão das APIs para análise completa e personalizada.
+        """
 
 # Instância global
 api_rotation_manager = EnhancedAPIRotationManager()

@@ -290,6 +290,8 @@ class SessionPersistenceManager:
                             logger.info(f"🔍 DEBUG get_sessions: session filtered by status {status}")
                             continue
 
+                        # Garante que session_id está presente nos dados
+                        session_data['session_id'] = session_id
                         sessions.append(session_data)
                     else:
                         logger.warning(f"⚠️ Falha ao carregar sessão: {session_id}")

@@ -18,15 +18,6 @@ import hashlib # Importado para hashing de URL
 
 logger = logging.getLogger(__name__)
 
-# Import do gerenciador de estrutura de pastas
-try:
-    from config.folder_structure import folder_manager, get_save_path
-    FOLDER_MANAGER_AVAILABLE = True
-    logger.info("📁 FolderStructureManager integrado ao AutoSaveManager")
-except ImportError as e:
-    FOLDER_MANAGER_AVAILABLE = False
-    logger.warning(f"⚠️ FolderStructureManager não disponível: {e}")
-
 # Import do serviço preditivo (lazy loading para evitar circular imports)
 _predictive_service = None
 
@@ -67,58 +58,14 @@ class AutoSaveManager:
     def __init__(self):
         """Inicializa o gerenciador de salvamento automático"""
         self.enabled = True
-        
-        # === INTEGRAÇÃO COM FOLDER STRUCTURE MANAGER ===
-        if FOLDER_MANAGER_AVAILABLE:
-            self.use_organized_structure = True
-            self.base_dir = folder_manager.base_path
-            self.relatorios_dir = os.path.join(self.base_dir, "relatorios_intermediarios")
-            os.makedirs(self.relatorios_dir, exist_ok=True)
-            logger.info("📁 Usando estrutura de pastas organizada")
-        else:
-            self.use_organized_structure = False
-            # Fallback para estrutura antiga
-            self.base_dir = "analyses_data"
-            self.relatorios_dir = "relatorios_intermediarios"
-            os.makedirs(self.base_dir, exist_ok=True)
-            os.makedirs(self.relatorios_dir, exist_ok=True)
-            logger.warning("⚠️ Usando estrutura de pastas legada")
+        self.base_dir = "analyses_data"
+        self.relatorios_dir = "relatorios_intermediarios"
+
+        # Cria diretórios necessários
+        os.makedirs(self.base_dir, exist_ok=True)
+        os.makedirs(self.relatorios_dir, exist_ok=True)
 
         logger.info("🔧 Auto Save Manager CENTRALIZADO inicializado")
-
-    def _get_save_path(self, category: str, filename: str, create_subdir: bool = True) -> Path:
-        """
-        Determina o caminho de salvamento baseado na categoria
-        
-        Args:
-            category: Categoria do arquivo (websailor_v2, viral_images, reports, etc.)
-            filename: Nome do arquivo
-            create_subdir: Se deve criar subdiretório baseado na data
-        """
-        
-        if self.use_organized_structure and FOLDER_MANAGER_AVAILABLE:
-            return get_save_path(category, filename, create_subdir)
-        else:
-            # Fallback para estrutura antiga
-            if category in ["websailor_v2", "websailor_v2_navigation", "websailor_v2_reasoning"]:
-                base_dir = Path(self.base_dir) / "websailor_v2"
-            elif category in ["viral_images", "viral_images_analysis"]:
-                base_dir = Path(self.base_dir) / "viral_images"
-            elif category in ["reports", "reports_automated"]:
-                base_dir = Path(self.relatorios_dir)
-            else:
-                base_dir = Path(self.base_dir)
-            
-            base_dir.mkdir(parents=True, exist_ok=True)
-            
-            if create_subdir:
-                date_subdir = datetime.now().strftime("%Y-%m-%d")
-                save_dir = base_dir / date_subdir
-                save_dir.mkdir(parents=True, exist_ok=True)
-            else:
-                save_dir = base_dir
-            
-            return save_dir / filename
 
     # === INTERFACE UNIFICADA PARA SALVAMENTO DE DADOS EXTRAÍDOS ===
 
@@ -501,48 +448,25 @@ class AutoSaveManager:
 
 
     def salvar_etapa(self, nome_etapa: str, dados: Any, categoria: str = "analise_completa", session_id: str = None) -> str:
-        """Salva uma etapa do processo com timestamp usando estrutura organizada"""
+        """Salva uma etapa do processo com timestamp"""
         try:
             # Gera timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
 
-            # Nome do arquivo
-            nome_arquivo = f"{nome_etapa}_{timestamp}.json"
-            
-            # === NOVO SISTEMA DE PASTAS ORGANIZADAS ===
-            if self.use_organized_structure and FOLDER_MANAGER_AVAILABLE:
-                # Mapeia categorias para o novo sistema
-                category_mapping = {
-                    "websailor_v2_navigation": "websailor_v2_navigation",
-                    "websailor_v2_reasoning": "websailor_v2_reasoning", 
-                    "websailor_v2": "websailor_v2",
-                    "viral_images": "viral_images_analysis",
-                    "market_research": "analysis_market",
-                    "reports": "reports_automated",
-                    "analise_completa": "analysis"
-                }
-                
-                mapped_category = category_mapping.get(categoria, "temp_processing")
-                
-                # Adiciona session_id como subdiretório se fornecido
-                if session_id:
-                    nome_arquivo = f"{session_id}_{nome_arquivo}"
-                
-                arquivo_path = self._get_save_path(mapped_category, nome_arquivo, create_subdir=True)
-                diretorio = str(arquivo_path.parent)
-                arquivo_json = str(arquivo_path)
+            # Define diretório base
+            if session_id:
+                diretorio = f"{self.relatorios_dir}/{categoria}/{session_id}"
             else:
-                # === FALLBACK PARA SISTEMA ANTIGO ===
-                if session_id:
-                    diretorio = f"{self.relatorios_dir}/{categoria}/{session_id}"
-                else:
-                    diretorio = f"{self.relatorios_dir}/{categoria}"
-                
-                os.makedirs(diretorio, exist_ok=True)
-                arquivo_json = f"{diretorio}/{nome_arquivo}"
+                diretorio = f"{self.relatorios_dir}/{categoria}"
+
+            os.makedirs(diretorio, exist_ok=True)
+
+            # Nome do arquivo
+            nome_arquivo = f"{nome_etapa}_{timestamp}"
 
             # Salva como JSON se possível
             try:
+                arquivo_json = f"{diretorio}/{nome_arquivo}.json"
 
                 # Serializa dados de forma segura
                 dados_serializaveis = serializar_dados_seguros(dados)

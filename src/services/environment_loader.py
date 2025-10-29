@@ -58,7 +58,7 @@ class EnvironmentLoader:
     def _set_default_values(self):
         """Define valores padrão para variáveis de ambiente"""
         defaults = {
-            'FLASK_ENV': 'production',  # CORREÇÃO: Padrão para produção
+            'FLASK_ENV': 'development',
             'HOST': '0.0.0.0',
             'PORT': '5000',
             'CORS_ORIGINS': '*',
@@ -80,8 +80,6 @@ class EnvironmentLoader:
 
         # Variáveis obrigatórias (sem valores padrão por segurança)
         required_vars = [
-            'SUPABASE_URL',
-            'SUPABASE_ANON_KEY',
             'GEMINI_API_KEY'
         ]
 

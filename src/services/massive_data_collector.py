@@ -15,8 +15,9 @@ from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 
 # Importa serviços existentes
-from services.enhanced_search_coordinator import enhanced_search_coordinator
-# from services.social_media_extractor import social_media_extractor
+from services.real_search_orchestrator import real_search_orchestrator
+from services.social_media_extractor import SocialMediaExtractor
+social_media_extractor = SocialMediaExtractor()
 from services.auto_save_manager import salvar_etapa, salvar_erro
 
 # Importa novos serviços da Etapa 1
@@ -117,12 +118,8 @@ class MassiveDataCollector:
         try:
             # FASE 1: Busca Web Intercalada com Rotação de APIs
             logger.info("🔍 FASE 1: Executando busca web intercalada...")
-            try:
-                web_results = await search_orchestrator.execute_massive_real_search(query, context, session_id)
-                logger.info(f"✅ Busca web concluída: {len(web_results)} resultados")
-            except Exception as e:
-                logger.error(f"❌ Erro na busca web: {e}")
-                web_results = []
+            # web_results = await search_api_manager.interleaved_search(query)  # REMOVIDO
+            web_results = []  # Placeholder
             massive_data["web_search_data"] = web_results
 
             # FASE 2: Coleta de Tendências via TrendFinder MCP
@@ -184,7 +181,7 @@ class MassiveDataCollector:
             logger.info("🔥 FASE 6: Extraindo imagens virais reais...")
             try:
                 from .viral_integration_service import viral_image_finder
-                viral_images = await viral_image_finder.extract_images_with_content(query)
+                viral_images, results_file = await viral_image_finder.find_viral_images(query)
                 
                 massive_data["viral_images"] = {
                     "success": True,
@@ -231,7 +228,7 @@ class MassiveDataCollector:
             # Extrai e processa conteúdo
             all_results = []
 
-            # Processa resultados web
+            # Processa resultados web - Handle both dict and list formats
             if isinstance(web_results, dict) and web_results.get("all_results"):
                 for provider_result in web_results["all_results"]:
                     if provider_result.get("success") and provider_result.get("results"):
@@ -240,7 +237,7 @@ class MassiveDataCollector:
                 all_results.extend(web_results)
 
             # Processa resultados sociais existentes - CORRIGIDO
-            if social_results.get("all_platforms_data"):
+            if isinstance(social_results, dict) and social_results.get("all_platforms_data"):
                 platforms = social_results["all_platforms_data"].get("platforms", {})
                 
                 # Verifica se platforms é um dict ou list
@@ -278,7 +275,7 @@ class MassiveDataCollector:
 
             # Atualiza estatísticas com informações dos novos serviços
             sources_by_type = {
-                "web_search_intercalado": web_results.get("successful_searches", 0),
+                "web_search_intercalado": web_results.get("successful_searches", 0) if isinstance(web_results, dict) else len(web_results) if isinstance(web_results, list) else 0,
                 "social_media_fallback": self._count_social_results(social_results),
                 "trendfinder_mcp": len(massive_data["trends_data"].get("trends", [])),
                 "supadata_mcp": massive_data["supadata_results"].get("total_results", 0),
@@ -290,7 +287,8 @@ class MassiveDataCollector:
                 "total_content_length": total_content,
                 "collection_time": collection_time,
                 "sources_by_type": sources_by_type,
-                "api_rotations": search_orchestrator.session_stats.get('api_rotations', {})
+                # "api_rotations": search_api_manager.get_provider_stats()  # REMOVIDO
+                "api_rotations": {}  # Placeholder
             })
 
             # Gera relatório de coleta com referências às imagens

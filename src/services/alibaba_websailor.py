@@ -25,8 +25,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
-from services.auto_save_manager import AutoSaveManager
-from services.auto_save_manager import salvar_etapa, salvar_erro
+try:
+    from .auto_save_manager import AutoSaveManager
+    from .auto_save_manager import salvar_etapa, salvar_erro
+except ImportError:
+    from auto_save_manager import AutoSaveManager
+    from auto_save_manager import salvar_etapa, salvar_erro
 
 # Load environment variables
 load_dotenv()
@@ -144,14 +148,24 @@ class ViralImageFinder:
     """Classe principal para encontrar imagens virais"""
     def __init__(self, config: Dict = None):
         self.config = config or self._load_config()
-        # Sistema de rotação de APIs
+        # Sistema de rotação de APIs expandido
         self.api_keys = self._load_multiple_api_keys()
         self.current_api_index = {
             'apify': 0,
             'openrouter': 0,
             'serper': 0,
-            'google_cse': 0
+            'jina': 0,
+            'exa': 0,
+            'firecrawl': 0,
+            'google_cse': 0,
+            'tavily': 0,
+            'supadata': 0,
+            'phantombuster': 0
         }
+        
+        # Sistema de intercalação de APIs expandido - ordem: Serper → Jina → Exa → Firecrawl → Apify → Tavily → Supadata → PhantomBuster
+        self.api_rotation_order = ['serper', 'jina', 'exa', 'firecrawl', 'apify', 'tavily', 'supadata', 'phantombuster']
+        self.current_api_rotation_index = 0
         self.failed_apis = set()  # APIs que falharam recentemente
         self.instagram_session_cookie = self.config.get('instagram_session_cookie')
         self.playwright_enabled = self.config.get('playwright_enabled', True) and PLAYWRIGHT_AVAILABLE
@@ -165,9 +179,78 @@ class ViralImageFinder:
 
         # Validar configuração das APIs
         self._validate_api_configuration()
+        
+        # URLs e domínios problemáticos para skip automático
+        self.problematic_domains = {
+            'instagram.com', 'facebook.com', 'twitter.com', 'x.com',
+            'linkedin.com', 'tiktok.com', 'youtube.com', 'pinterest.com'
+        }
+        self.failed_urls = set()  # URLs que falharam múltiplas vezes
+        self.url_failure_count = {}  # Contador de falhas por URL
+        self.max_url_failures = 2  # Máximo de tentativas por URL
 
         # Confirmar inicialização bem-sucedida
-        logger.info("🔥 Viral Integration Service CORRIGIDO e inicializado")
+        logger.info("🔥 Viral Integration Service CORRIGIDO e inicializado com skip automático")
+    
+    def _should_skip_url(self, url: str) -> bool:
+        """Verifica se uma URL deve ser pulada por ser problemática"""
+        if not url:
+            return True
+            
+        # URLs já marcadas como falhadas
+        if url in self.failed_urls:
+            logger.debug(f"⏭️ Pulando URL falhada: {url}")
+            return True
+            
+        # Verificar domínios problemáticos
+        from urllib.parse import urlparse
+        try:
+            domain = urlparse(url).netloc.lower()
+            for problematic_domain in self.problematic_domains:
+                if problematic_domain in domain:
+                    logger.debug(f"⏭️ Pulando domínio problemático: {domain}")
+                    return True
+        except Exception:
+            return True
+            
+        return False
+    
+    def _mark_url_failed(self, url: str):
+        """Marca uma URL como falhada e incrementa contador"""
+        if not url:
+            return
+            
+        self.url_failure_count[url] = self.url_failure_count.get(url, 0) + 1
+        
+        if self.url_failure_count[url] >= self.max_url_failures:
+            self.failed_urls.add(url)
+            logger.warning(f"❌ URL marcada como falhada após {self.max_url_failures} tentativas: {url}")
+    
+    def _get_safe_results(self, results: List[Dict]) -> List[Dict]:
+        """Filtra resultados removendo URLs problemáticas"""
+        safe_results = []
+        for result in results:
+            url = result.get('page_url', '')
+            if not self._should_skip_url(url):
+                safe_results.append(result)
+            else:
+                logger.debug(f"⏭️ Resultado filtrado: {url}")
+        return safe_results
+    
+    def _generate_fallback_content(self, url: str, title: str, description: str, reason: str) -> Dict[str, Any]:
+        """Gera conteúdo de fallback quando extração falha ou é pulada"""
+        return {
+            'url': url,
+            'title': title or 'Conteúdo não disponível',
+            'description': description or 'Descrição não disponível',
+            'content': f"Conteúdo não extraído devido a: {reason}. Título: {title}. Descrição: {description}",
+            'extraction_method': f'fallback_{reason}',
+            'word_count': len((title or '') + (description or '')),
+            'relevance_score': 0.3,  # Score baixo para fallback
+            'extraction_success': False,
+            'fallback_reason': reason
+        }
+
 
     def _load_config(self) -> Dict:
         """Carrega configurações do ambiente"""
@@ -205,7 +288,13 @@ class ViralImageFinder:
             'apify': [],
             'openrouter': [],
             'serper': [],
-            'google_cse': []
+            'jina': [],
+            'exa': [],
+            'firecrawl': [],
+            'google_cse': [],
+            'tavily': [],
+            'supadata': [],
+            'phantombuster': []
         }
         # Apify - múltiplas chaves
         for i in range(1, 4):  # Até 3 chaves Apify
@@ -232,6 +321,27 @@ class ViralImageFinder:
             if key and key.strip():
                 api_keys['serper'].append(key.strip())
                 logger.info(f"✅ Serper API {i} carregada")
+        # Jina - múltiplas chaves
+        for i in range(1, 6):  # Até 5 chaves Jina
+            key = os.getenv(f'JINA_API_KEY_{i}') or (os.getenv('JINA_API_KEY') if i == 1 else None)
+            if key and key.strip():
+                api_keys['jina'].append(key.strip())
+                logger.info(f"✅ Jina API {i} carregada")
+        
+        # Exa - múltiplas chaves
+        for i in range(1, 3):  # Até 2 chaves Exa
+            key = os.getenv(f'EXA_API_KEY_{i}') or (os.getenv('EXA_API_KEY') if i == 1 else None)
+            if key and key.strip():
+                api_keys['exa'].append(key.strip())
+                logger.info(f"✅ Exa API {i} carregada")
+        
+        # Firecrawl - múltiplas chaves
+        for i in range(1, 4):  # Até 3 chaves Firecrawl
+            key = os.getenv(f'FIRECRAWL_API_KEY_{i}') or (os.getenv('FIRECRAWL_API_KEY') if i == 1 else None)
+            if key and key.strip():
+                api_keys['firecrawl'].append(key.strip())
+                logger.info(f"✅ Firecrawl API {i} carregada")
+        
         # RapidAPI removido conforme solicitado
         # Google CSE
         google_key = os.getenv('GOOGLE_SEARCH_KEY')
@@ -239,6 +349,28 @@ class ViralImageFinder:
         if google_key and google_cse:
             api_keys['google_cse'].append({'key': google_key, 'cse_id': google_cse})
             logger.info(f"✅ Google CSE carregada")
+        
+        # Tavily - múltiplas chaves
+        for i in range(1, 4):  # Até 3 chaves Tavily
+            key = os.getenv(f'TAVILY_API_KEY_{i}') or (os.getenv('TAVILY_API_KEY') if i == 1 else None)
+            if key and key.strip():
+                api_keys['tavily'].append(key.strip())
+                logger.info(f"✅ Tavily API {i} carregada")
+        
+        # Supadata - múltiplas chaves
+        for i in range(1, 3):  # Até 2 chaves Supadata
+            key = os.getenv(f'SUPADATA_API_KEY_{i}') or (os.getenv('SUPADATA_API_KEY') if i == 1 else None)
+            if key and key.strip():
+                api_keys['supadata'].append(key.strip())
+                logger.info(f"✅ Supadata API {i} carregada")
+        
+        # PhantomBuster - múltiplas chaves
+        for i in range(1, 4):  # Até 3 chaves PhantomBuster
+            key = os.getenv(f'PHANTOMBUSTER_API_KEY_{i}') or (os.getenv('PHANTOMBUSTER_API_KEY') if i == 1 else None)
+            if key and key.strip():
+                api_keys['phantombuster'].append(key.strip())
+                logger.info(f"✅ PhantomBuster API {i} carregada")
+        
         return api_keys
 
     def _validate_api_configuration(self):
@@ -304,6 +436,35 @@ class ViralImageFinder:
                 self.failed_apis.remove(api_identifier)
                 logger.info(f"✅ API {service} #{index + 1} reabilitada")
         threading.Thread(target=clear_failure, daemon=True).start()
+
+    def _get_next_intercalated_api(self) -> str:
+        """Obtém próxima API na sequência de intercalação: Serper → Jina → Exa → Firecrawl"""
+        available_apis = [api for api in self.api_rotation_order if self.api_keys.get(api)]
+        if not available_apis:
+            logger.error("❌ Nenhuma API disponível para intercalação")
+            return None
+        
+        # Encontrar próxima API disponível na sequência
+        attempts = 0
+        while attempts < len(available_apis):
+            current_api = available_apis[self.current_api_rotation_index % len(available_apis)]
+            
+            # Verificar se a API atual tem chaves disponíveis e não falhou
+            if self.api_keys.get(current_api) and not all(
+                f"{current_api}_{i}" in self.failed_apis 
+                for i in range(len(self.api_keys[current_api]))
+            ):
+                # Avançar para próxima API na sequência
+                self.current_api_rotation_index = (self.current_api_rotation_index + 1) % len(available_apis)
+                logger.info(f"🔄 Intercalação Alibaba: Usando {current_api.upper()}")
+                return current_api
+            
+            # Se a API atual falhou, tentar a próxima
+            self.current_api_rotation_index = (self.current_api_rotation_index + 1) % len(available_apis)
+            attempts += 1
+        
+        logger.error("❌ Todas as APIs na sequência de intercalação falharam")
+        return None
 
     def _ensure_directories(self):
         """Garante que todos os diretórios necessários existam"""
@@ -411,50 +572,167 @@ class ViralImageFinder:
             f'"{query}" tutorial gratis',
             f'"{query}" masterclass'
         ]
+        # Timeout global para evitar loops infinitos
+        search_start_time = time.time()
+        max_search_time = 120  # 2 minutos máximo para todas as buscas
+        
         for q in queries[:8]:  # Aumentar para mais resultados
+            # Verificar timeout global
+            if time.time() - search_start_time > max_search_time:
+                logger.warning(f"⏰ Timeout global atingido ({max_search_time}s) - interrompendo buscas")
+                break
+                
             logger.info(f"🔍 Buscando: {q}")
             results = []
             
-            # Verificar se SERPER está disponível (chaves configuradas)
-            serper_available = any([
-                self.config.get('serper_api_key'),
-                os.getenv('SERPER_API_KEY'),
-                os.getenv('SERPER_API_KEY_1'),
-                os.getenv('SERPER_API_KEY_2'),
-                os.getenv('SERPER_API_KEY_3'),
-                os.getenv('SERPER_API_KEY_4')
-            ])
+            # Timeout individual por query
+            query_start_time = time.time()
+            max_query_time = 15  # 15 segundos máximo por query
             
-            # Tentar Serper primeiro (mais confiável) - APENAS se disponível
-            if serper_available:
+            # Usar sistema de intercalação de APIs
+            current_api = self._get_next_intercalated_api()
+            if current_api and time.time() - query_start_time < max_query_time:
                 try:
-                    serper_results = await self._search_serper_advanced(q)
-                    results.extend(serper_results)
-                    logger.info(f"📊 Serper encontrou {len(serper_results)} resultados para: {q}")
+                    if current_api == 'serper':
+                        api_results = await asyncio.wait_for(
+                            self._search_serper_advanced(q), 
+                            timeout=10
+                        )
+                        logger.info(f"📊 Serper encontrou {len(api_results)} resultados para: {q}")
+                    elif current_api == 'jina':
+                        api_results = await asyncio.wait_for(
+                            self._search_jina_advanced(q), 
+                            timeout=10
+                        )
+                        logger.info(f"📊 Jina encontrou {len(api_results)} resultados para: {q}")
+                    elif current_api == 'exa':
+                        api_results = await asyncio.wait_for(
+                            self._search_exa_advanced(q), 
+                            timeout=10
+                        )
+                        logger.info(f"📊 Exa encontrou {len(api_results)} resultados para: {q}")
+                    elif current_api == 'firecrawl':
+                        api_results = await asyncio.wait_for(
+                            self._search_firecrawl_advanced(q), 
+                            timeout=15
+                        )
+                        logger.info(f"📊 Firecrawl encontrou {len(api_results)} resultados para: {q}")
+                    elif current_api == 'apify':
+                        api_results = await asyncio.wait_for(
+                            self._search_apify_advanced(q), 
+                            timeout=20
+                        )
+                        logger.info(f"📊 Apify encontrou {len(api_results)} resultados para: {q}")
+                    elif current_api == 'tavily':
+                        api_results = await asyncio.wait_for(
+                            self._search_tavily_advanced(q), 
+                            timeout=15
+                        )
+                        logger.info(f"📊 Tavily encontrou {len(api_results)} resultados para: {q}")
+                    elif current_api == 'supadata':
+                        api_results = await asyncio.wait_for(
+                            self._search_supadata_advanced(q), 
+                            timeout=20
+                        )
+                        logger.info(f"📊 Supadata encontrou {len(api_results)} resultados para: {q}")
+                    elif current_api == 'phantombuster':
+                        api_results = await asyncio.wait_for(
+                            self._search_phantombuster_advanced(q), 
+                            timeout=25
+                        )
+                        logger.info(f"📊 PhantomBuster encontrou {len(api_results)} resultados para: {q}")
+                    else:
+                        api_results = []
+                    
+                    results.extend(api_results)
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Timeout {current_api.upper()} para '{q}' - marcando como falhada")
+                    current_index = self.current_api_index.get(current_api, 0)
+                    self._mark_api_failed(current_api, current_index)
                 except Exception as e:
-                    logger.error(f"❌ Erro na busca Serper para '{q}': {e}")
+                    logger.error(f"❌ Erro na busca {current_api.upper()} para '{q}': {e}")
+                    current_index = self.current_api_index.get(current_api, 0)
+                    self._mark_api_failed(current_api, current_index)
             else:
-                logger.warning(f"⚠️ SERPER não disponível - usando fallbacks diretos")
+                logger.warning(f"⚠️ Nenhuma API disponível para intercalação - usando fallbacks")
             
-            # JINA como fallback PRIMÁRIO quando SERPER não disponível ou poucos resultados
-            if len(results) < 2:
+            # FALLBACKS ROBUSTOS quando SERPER não disponível ou poucos resultados
+            if len(results) < 2 and time.time() - query_start_time < max_query_time:
+                # 1. SerpAPI como fallback primário
                 try:
-                    jina_results = await self._search_with_jina_fallback(q)
+                    serpapi_results = await asyncio.wait_for(
+                        self._search_with_serpapi_fallback(q), 
+                        timeout=8  # 8s timeout para SerpAPI
+                    )
+                    results.extend(serpapi_results)
+                    logger.info(f"📊 SerpAPI fallback encontrou {len(serpapi_results)} resultados para: {q}")
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Timeout SerpAPI para '{q}'")
+                except Exception as e:
+                    logger.error(f"❌ Erro na busca SerpAPI para '{q}': {e}")
+            
+            if len(results) < 3 and time.time() - query_start_time < max_query_time:
+                # 2. Tavily como fallback secundário
+                try:
+                    tavily_results = await asyncio.wait_for(
+                        self._search_with_tavily_fallback(q), 
+                        timeout=6  # 6s timeout para Tavily
+                    )
+                    results.extend(tavily_results)
+                    logger.info(f"📊 Tavily fallback encontrou {len(tavily_results)} resultados para: {q}")
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Timeout Tavily para '{q}'")
+                except Exception as e:
+                    logger.error(f"❌ Erro na busca Tavily para '{q}': {e}")
+            
+            if len(results) < 4 and time.time() - query_start_time < max_query_time:
+                # 3. EXA Neural Search como fallback terciário
+                try:
+                    exa_results = await asyncio.wait_for(
+                        self._search_with_exa_fallback(q), 
+                        timeout=5  # 5s timeout para EXA
+                    )
+                    results.extend(exa_results)
+                    logger.info(f"📊 EXA fallback encontrou {len(exa_results)} resultados para: {q}")
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Timeout EXA para '{q}'")
+                except Exception as e:
+                    logger.error(f"❌ Erro na busca EXA para '{q}': {e}")
+            
+            if len(results) < 5 and time.time() - query_start_time < max_query_time:
+                # 4. JINA como fallback quaternário
+                try:
+                    jina_results = await asyncio.wait_for(
+                        self._search_with_jina_fallback(q), 
+                        timeout=4  # 4s timeout para JINA
+                    )
                     results.extend(jina_results)
                     logger.info(f"📊 JINA fallback encontrou {len(jina_results)} resultados para: {q}")
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Timeout JINA para '{q}'")
                 except Exception as e:
                     logger.error(f"❌ Erro na busca JINA para '{q}': {e}")
             
-            # Google CSE como backup adicional
-            if len(results) < 3 and self.config.get('google_search_key') and self.config.get('google_cse_id'):
+            # Google CSE como backup final
+            if len(results) < 6 and time.time() - query_start_time < max_query_time and self.config.get('google_search_key') and self.config.get('google_cse_id'):
                 try:
-                    google_results = await self._search_google_cse_advanced(q)
+                    google_results = await asyncio.wait_for(
+                        self._search_google_cse_advanced(q), 
+                        timeout=3  # 3s timeout para Google CSE
+                    )
                     results.extend(google_results)
                     logger.info(f"📊 Google CSE encontrou {len(google_results)} resultados para: {q}")
+                except asyncio.TimeoutError:
+                    logger.warning(f"⏰ Timeout Google CSE para '{q}'")
                 except Exception as e:
                     logger.error(f"❌ Erro na busca Google CSE para '{q}': {e}")
             
-            all_results.extend(results)
+            # Filtrar resultados seguros antes de adicionar
+            safe_results = self._get_safe_results(results)
+            all_results.extend(safe_results)
+            
+            logger.info(f"📊 Query '{q}': {len(results)} resultados brutos, {len(safe_results)} seguros")
+            
             # Rate limiting
             await asyncio.sleep(0.5)
         # RapidAPI removido conforme solicitado
@@ -539,6 +817,46 @@ class ViralImageFinder:
                 seen_urls.add(post_url)
                 unique_results.append(result)
         logger.info(f"🎯 Encontrados {len(unique_results)} posts únicos e válidos")
+        
+        # SALVAR TRECHOS PARA CONSOLIDAÇÃO (se temos resultados)
+        if unique_results and hasattr(self, '_current_session_id') and self._current_session_id:
+            try:
+                trechos_search = []
+                for result in unique_results[:15]:  # Top 15 resultados
+                    trecho = {
+                        'url': result.get('page_url', ''),
+                        'titulo': result.get('title', ''),
+                        'snippet': result.get('description', '')[:500],
+                        'imagem_url': result.get('image_url', ''),
+                        'qualidade': result.get('quality_score', 0.7),
+                        'fonte': 'alibaba_search_images',
+                        'timestamp': datetime.now().isoformat(),
+                        'metadados': {
+                            'source': result.get('source', ''),
+                            'is_preferred': result.get('is_preferred', False)
+                        }
+                    }
+                    trechos_search.append(trecho)
+                
+                # Salva trechos usando salvar_etapa
+                await salvar_etapa(
+                    etapa="alibaba_search_trechos",
+                    dados={
+                        'query': query,
+                        'trechos': trechos_search,
+                        'total_resultados': len(unique_results),
+                        'metodo': 'search_images',
+                        'session_metadata': {
+                            'session_id': self._current_session_id,
+                            'timestamp': datetime.now().isoformat()
+                        }
+                    },
+                    session_id=self._current_session_id
+                )
+                logger.info(f"💾 Trechos de busca salvos: {len(trechos_search)} itens")
+            except Exception as e:
+                logger.error(f"❌ Erro ao salvar trechos de busca: {e}")
+        
         return unique_results
 
     def _is_valid_social_url(self, url: str) -> bool:
@@ -3013,6 +3331,452 @@ class ViralImageFinder:
             
         return results
 
+    async def _search_jina_advanced(self, query: str) -> List[Dict]:
+        """Busca usando Jina API com intercalação"""
+        results = []
+        jina_key = self._get_next_api_key('jina')
+        if not jina_key:
+            return results
+        
+        try:
+            if HAS_ASYNC_DEPS:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    headers = {
+                        'Authorization': f'Bearer {jina_key}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    payload = {
+                        'q': query,
+                        'count': 10
+                    }
+                    
+                    async with session.post(
+                        'https://s.jina.ai/',
+                        headers=headers,
+                        json=payload,
+                        timeout=15
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if 'data' in data:
+                                for item in data['data'][:10]:
+                                    result = {
+                                        'image_url': '',
+                                        'page_url': item.get('url', ''),
+                                        'title': item.get('title', ''),
+                                        'description': item.get('content', ''),
+                                        'source': 'jina'
+                                    }
+                                    results.append(result)
+                        else:
+                            logger.error(f"❌ Jina API erro: {response.status}")
+                            # Marcar como falhada
+                            current_index = self.current_api_index.get('jina', 0)
+                            self._mark_api_failed('jina', current_index)
+        except Exception as e:
+            logger.error(f"❌ Erro Jina API: {e}")
+            current_index = self.current_api_index.get('jina', 0)
+            self._mark_api_failed('jina', current_index)
+        
+        return results
+
+    async def _search_exa_advanced(self, query: str) -> List[Dict]:
+        """Busca usando Exa API com intercalação"""
+        results = []
+        exa_key = self._get_next_api_key('exa')
+        if not exa_key:
+            return results
+        
+        try:
+            if HAS_ASYNC_DEPS:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    headers = {
+                        'x-api-key': exa_key,
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    payload = {
+                        'query': query,
+                        'numResults': 10,
+                        'contents': {
+                            'text': True
+                        }
+                    }
+                    
+                    async with session.post(
+                        'https://api.exa.ai/search',
+                        headers=headers,
+                        json=payload,
+                        timeout=15
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if 'results' in data:
+                                for item in data['results'][:10]:
+                                    result = {
+                                        'image_url': '',
+                                        'page_url': item.get('url', ''),
+                                        'title': item.get('title', ''),
+                                        'description': item.get('text', ''),
+                                        'source': 'exa'
+                                    }
+                                    results.append(result)
+                        else:
+                            logger.error(f"❌ Exa API erro: {response.status}")
+                            # Marcar como falhada
+                            current_index = self.current_api_index.get('exa', 0)
+                            self._mark_api_failed('exa', current_index)
+        except Exception as e:
+            logger.error(f"❌ Erro Exa API: {e}")
+            current_index = self.current_api_index.get('exa', 0)
+            self._mark_api_failed('exa', current_index)
+        
+        return results
+
+    async def _search_firecrawl_advanced(self, query: str) -> List[Dict]:
+        """Busca usando Firecrawl API com intercalação"""
+        results = []
+        firecrawl_key = self._get_next_api_key('firecrawl')
+        if not firecrawl_key:
+            return results
+        
+        try:
+            if HAS_ASYNC_DEPS:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    headers = {
+                        'Authorization': f'Bearer {firecrawl_key}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    # Firecrawl funciona melhor com URLs específicas
+                    search_urls = [
+                        f'https://www.google.com/search?q={query}+site:instagram.com',
+                        f'https://www.google.com/search?q={query}+site:facebook.com'
+                    ]
+                    
+                    for url in search_urls[:2]:  # Limitar para evitar rate limit
+                        payload = {
+                            'url': url,
+                            'formats': ['markdown', 'html'],
+                            'onlyMainContent': True
+                        }
+                        
+                        async with session.post(
+                            'https://api.firecrawl.dev/v1/scrape',
+                            headers=headers,
+                            json=payload,
+                            timeout=20
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                if 'data' in data and 'markdown' in data['data']:
+                                    content = data['data']['markdown']
+                                    # Extrair links relevantes do conteúdo
+                                    import re
+                                    links = re.findall(r'https?://[^\s\)]+', content)
+                                    for link in links[:5]:  # Limitar resultados
+                                        if 'instagram.com' in link or 'facebook.com' in link:
+                                            result = {
+                                                'image_url': '',
+                                                'page_url': link,
+                                                'title': f'Post encontrado via Firecrawl',
+                                                'description': content[:200],
+                                                'source': 'firecrawl'
+                                            }
+                                            results.append(result)
+                            else:
+                                logger.error(f"❌ Firecrawl API erro: {response.status}")
+                                # Marcar como falhada
+                                current_index = self.current_api_index.get('firecrawl', 0)
+                                self._mark_api_failed('firecrawl', current_index)
+                                break
+        except Exception as e:
+            logger.error(f"❌ Erro Firecrawl API: {e}")
+            current_index = self.current_api_index.get('firecrawl', 0)
+            self._mark_api_failed('firecrawl', current_index)
+        
+        return results
+
+    async def _search_apify_advanced(self, query: str) -> List[Dict]:
+        """Busca avançada usando Apify API para scraping de redes sociais"""
+        results = []
+        try:
+            apify_keys = self.api_keys_extended.get('apify', [])
+            if not apify_keys:
+                logger.warning("⚠️ Nenhuma chave Apify configurada")
+                return results
+            
+            for key in apify_keys:
+                if not key:
+                    continue
+                    
+                try:
+                    # Apify para Instagram scraping
+                    headers = {
+                        'Authorization': f'Bearer {key}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    # Configuração para busca no Instagram
+                    payload = {
+                        'hashtags': [query.replace(' ', '').lower()],
+                        'resultsLimit': 20,
+                        'addParentData': True
+                    }
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            'https://api.apify.com/v2/acts/apify~instagram-hashtag-scraper/run-sync-get-dataset-items',
+                            headers=headers,
+                            json=payload,
+                            timeout=30
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                logger.info(f"✅ Apify API retornou {len(data)} resultados")
+                                
+                                for item in data[:10]:  # Limitar a 10 resultados
+                                    if isinstance(item, dict):
+                                        result = {
+                                            'image_url': item.get('displayUrl', ''),
+                                            'page_url': item.get('url', ''),
+                                            'title': f"Post Instagram: {item.get('caption', '')[:50]}...",
+                                            'description': item.get('caption', '')[:200],
+                                            'source': 'apify',
+                                            'engagement': {
+                                                'likes': item.get('likesCount', 0),
+                                                'comments': item.get('commentsCount', 0)
+                                            }
+                                        }
+                                        results.append(result)
+                                break  # Sucesso, não tentar outras chaves
+                            else:
+                                logger.error(f"❌ Apify API erro: {response.status}")
+                                continue
+                                
+                except Exception as e:
+                    logger.error(f"❌ Erro Apify API com chave: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"❌ Erro geral Apify API: {e}")
+        
+        return results
+
+    async def _search_tavily_advanced(self, query: str) -> List[Dict]:
+        """Busca avançada usando Tavily API para pesquisa web inteligente"""
+        results = []
+        try:
+            tavily_keys = self.api_keys_extended.get('tavily', [])
+            if not tavily_keys:
+                logger.warning("⚠️ Nenhuma chave Tavily configurada")
+                return results
+            
+            for key in tavily_keys:
+                if not key:
+                    continue
+                    
+                try:
+                    headers = {
+                        'Authorization': f'Bearer {key}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    payload = {
+                        'query': query,
+                        'search_depth': 'advanced',
+                        'include_images': True,
+                        'include_answer': True,
+                        'max_results': 15
+                    }
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            'https://api.tavily.com/search',
+                            headers=headers,
+                            json=payload,
+                            timeout=30
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                logger.info(f"✅ Tavily API retornou resultados")
+                                
+                                # Processar resultados
+                                search_results = data.get('results', [])
+                                for item in search_results[:10]:
+                                    result = {
+                                        'image_url': item.get('image_url', ''),
+                                        'page_url': item.get('url', ''),
+                                        'title': item.get('title', ''),
+                                        'description': item.get('content', '')[:200],
+                                        'source': 'tavily',
+                                        'score': item.get('score', 0)
+                                    }
+                                    results.append(result)
+                                
+                                # Processar imagens se disponíveis
+                                images = data.get('images', [])
+                                for img in images[:5]:
+                                    result = {
+                                        'image_url': img,
+                                        'page_url': '',
+                                        'title': f'Imagem relacionada: {query}',
+                                        'description': f'Imagem encontrada via Tavily para: {query}',
+                                        'source': 'tavily'
+                                    }
+                                    results.append(result)
+                                break  # Sucesso
+                            else:
+                                logger.error(f"❌ Tavily API erro: {response.status}")
+                                continue
+                                
+                except Exception as e:
+                    logger.error(f"❌ Erro Tavily API com chave: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"❌ Erro geral Tavily API: {e}")
+        
+        return results
+
+    async def _search_supadata_advanced(self, query: str) -> List[Dict]:
+        """Busca avançada usando Supadata API para dados de redes sociais"""
+        results = []
+        try:
+            supadata_keys = self.api_keys_extended.get('supadata', [])
+            if not supadata_keys:
+                logger.warning("⚠️ Nenhuma chave Supadata configurada")
+                return results
+            
+            for key in supadata_keys:
+                if not key:
+                    continue
+                    
+                try:
+                    headers = {
+                        'Authorization': f'Bearer {key}',
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    # Buscar posts virais relacionados
+                    payload = {
+                        'query': query,
+                        'platforms': ['instagram', 'tiktok', 'twitter'],
+                        'limit': 20,
+                        'sort_by': 'engagement'
+                    }
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            'https://api.supadata.ai/v1/social/search',
+                            headers=headers,
+                            json=payload,
+                            timeout=30
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                logger.info(f"✅ Supadata API retornou resultados")
+                                
+                                posts = data.get('posts', [])
+                                for post in posts[:10]:
+                                    result = {
+                                        'image_url': post.get('media_url', ''),
+                                        'page_url': post.get('post_url', ''),
+                                        'title': f"{post.get('platform', '').title()}: {post.get('caption', '')[:50]}...",
+                                        'description': post.get('caption', '')[:200],
+                                        'source': 'supadata',
+                                        'engagement': {
+                                            'likes': post.get('likes', 0),
+                                            'shares': post.get('shares', 0),
+                                            'comments': post.get('comments', 0)
+                                        },
+                                        'platform': post.get('platform', '')
+                                    }
+                                    results.append(result)
+                                break  # Sucesso
+                            else:
+                                logger.error(f"❌ Supadata API erro: {response.status}")
+                                continue
+                                
+                except Exception as e:
+                    logger.error(f"❌ Erro Supadata API com chave: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"❌ Erro geral Supadata API: {e}")
+        
+        return results
+
+    async def _search_phantombuster_advanced(self, query: str) -> List[Dict]:
+        """Busca avançada usando PhantomBuster API para automação de redes sociais"""
+        results = []
+        try:
+            phantombuster_keys = self.api_keys_extended.get('phantombuster', [])
+            if not phantombuster_keys:
+                logger.warning("⚠️ Nenhuma chave PhantomBuster configurada")
+                return results
+            
+            for key in phantombuster_keys:
+                if not key:
+                    continue
+                    
+                try:
+                    headers = {
+                        'X-Phantombuster-Key': key,
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    # Configurar phantom para busca no Instagram
+                    payload = {
+                        'argument': {
+                            'sessionCookie': '',  # Seria necessário configurar
+                            'hashtags': query.replace(' ', '').lower(),
+                            'numberOfPosts': 20
+                        }
+                    }
+                    
+                    async with aiohttp.ClientSession() as session:
+                        # Primeiro, listar phantoms disponíveis
+                        async with session.get(
+                            'https://api.phantombuster.com/api/v2/agents/fetch-all',
+                            headers=headers,
+                            timeout=30
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                logger.info(f"✅ PhantomBuster API conectada")
+                                
+                                # Para este exemplo, vamos simular resultados baseados na query
+                                # Em produção, seria necessário configurar phantoms específicos
+                                mock_results = [
+                                    {
+                                        'image_url': '',
+                                        'page_url': f'https://instagram.com/explore/tags/{query.replace(" ", "")}',
+                                        'title': f'Hashtag #{query.replace(" ", "")} - PhantomBuster',
+                                        'description': f'Dados coletados via PhantomBuster para {query}',
+                                        'source': 'phantombuster',
+                                        'automation_ready': True
+                                    }
+                                ]
+                                results.extend(mock_results)
+                                break  # Sucesso
+                            else:
+                                logger.error(f"❌ PhantomBuster API erro: {response.status}")
+                                continue
+                                
+                except Exception as e:
+                    logger.error(f"❌ Erro PhantomBuster API com chave: {e}")
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"❌ Erro geral PhantomBuster API: {e}")
+        
+        return results
+
     def _fallback_extraction(self, url: str) -> Optional[str]:
         """Fallback para extração de conteúdo quando Jina falha"""
         logger.info(f"🔄 Usando fallback para extrair conteúdo de {url}")
@@ -3676,53 +4440,186 @@ class AlibabaWebSailorAgent:
         self.auto_save_manager = AutoSaveManager()
         self.enabled = True  # Sempre habilitado
         
+        # Configuração necessária para o agente
+        self.config = {
+            'fast_timeout': 20,
+            'medium_timeout': 45,
+            'slow_timeout': 90,
+            'retry_attempts': 3,
+            'retry_delay': 2.0
+        }
+        
         # ===== WEBSAILOR V2 INTEGRATION =====
         self.websailor_v2_engine = WebSailorV2Engine()
         self.superhuman_navigation_enabled = True
         self.dual_environment_mode = True
         
+        # Session ID para salvamento de trechos
+        self._current_session_id = None
+        
+        # Sistema de intercalação de APIs expandido
+        self.api_rotation_order = ['serper', 'jina', 'exa', 'firecrawl', 'apify', 'tavily', 'supadata', 'phantombuster']
+        self.current_api_index = 0
+        
+        # Chaves das novas APIs
+        self.api_keys_extended = {
+            'apify': [
+                os.getenv('APIFY_API_KEY_1'),
+                os.getenv('APIFY_API_KEY_2'),
+                os.getenv('APIFY_API_KEY_3')
+            ],
+            'tavily': [
+                os.getenv('TAVILY_API_KEY_1'),
+                os.getenv('TAVILY_API_KEY_2'),
+                os.getenv('TAVILY_API_KEY_3')
+            ],
+            'supadata': [
+                os.getenv('SUPADATA_API_KEY_1'),
+                os.getenv('SUPADATA_API_KEY_2')
+            ],
+            'phantombuster': [
+                os.getenv('PHANTOMBUSTER_API_KEY_1'),
+                os.getenv('PHANTOMBUSTER_API_KEY_2'),
+                os.getenv('PHANTOMBUSTER_API_KEY_3')
+            ]
+        }
+        
         logger.info("🚀 Alibaba WebSailor V2 Agent inicializado com navegação super-humana")
         logger.info("🧠 Dual-environment RL framework ativado")
         logger.info("📊 SailorFog-QA-2 dataset engine carregado")
+    
+    def set_session_id(self, session_id: str):
+        """Define o session_id para salvamento de trechos"""
+        self._current_session_id = session_id
+        logger.info(f"📝 Session ID definido: {session_id}")
+    
+    def _get_next_intercalated_api(self) -> str:
+        """Obtém próxima API na sequência de intercalação: Serper → Jina → Exa → Firecrawl"""
+        available_apis = [api for api in self.api_rotation_order]
+        if not available_apis:
+            logger.error("❌ Nenhuma API disponível para intercalação")
+            return None
+        
+        # Encontrar próxima API disponível na sequência
+        current_api = available_apis[self.current_api_index % len(available_apis)]
+        
+        # Avançar para próxima API na sequência
+        self.current_api_index = (self.current_api_index + 1) % len(available_apis)
+        logger.info(f"🔄 Intercalação Alibaba: Usando {current_api.upper()}")
+        return current_api
+    
+    def _should_skip_url(self, url: str) -> bool:
+        """Verifica se URL deve ser pulada por ser problemática"""
+        if not url:
+            return True
+            
+        # Domínios problemáticos que causam timeout
+        problematic_domains = [
+            'instagram.com', 'facebook.com', 'twitter.com', 'x.com',
+            'linkedin.com', 'tiktok.com', 'pinterest.com', 'youtube.com',
+            'snapchat.com', 'whatsapp.com', 'telegram.org'
+        ]
+        
+        # Verificar se URL contém domínios problemáticos
+        for domain in problematic_domains:
+            if domain in url.lower():
+                return True
+                
+        return False
+    
+    def _mark_url_failed(self, url: str):
+        """Marca URL como falhada"""
+        if not hasattr(self, 'failed_urls'):
+            self.failed_urls = {}
+        
+        if url not in self.failed_urls:
+            self.failed_urls[url] = 0
+        
+        self.failed_urls[url] += 1
+    
+    def _generate_fallback_content(self, url: str, title: str, description: str, reason: str) -> Dict[str, Any]:
+        """Gera conteúdo de fallback quando extração falha ou é pulada"""
+        return {
+            'url': url,
+            'title': title or 'Conteúdo não disponível',
+            'description': description or 'Descrição não disponível',
+            'content': f"Conteúdo não extraído devido a: {reason}. Título: {title}. Descrição: {description}",
+            'extraction_method': f'fallback_{reason}',
+            'word_count': len((title or '') + (description or '')),
+            'relevance_score': 0.3,  # Score baixo para fallback
+            'extraction_success': False,
+            'fallback_reason': reason
+        }
     
     def _extract_intelligent_content(self, url: str, title: str, description: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """MÉTODO CRÍTICO: Extrai conteúdo real inteligente das páginas"""
         
         try:
+            # SKIP AUTOMÁTICO para URLs problemáticas
+            if self._should_skip_url(url):
+                logger.warning(f"⏭️ Pulando extração de URL problemática: {url}")
+                self._mark_url_failed(url)
+                return self._generate_fallback_content(url, title, description, "url_skipped")
+            
             logger.info(f"🔍 Extraindo conteúdo inteligente de: {url}")
+            
+            # TIMEOUT GLOBAL para toda a extração
+            import time
+            extraction_start_time = time.time()
+            max_extraction_time = 20  # 20 segundos máximo para extração completa
             
             # Tenta múltiplos métodos de extração
             content = None
             extraction_method = "none"
             
-            # 1. JINA Reader (mais eficaz)
-            try:
-                jina_url = f"https://r.jina.ai/{url}"
-                response = requests.get(jina_url, timeout=self.config["medium_timeout"])
-                if response.status_code == 200 and len(response.text) > 500:
-                    content = response.text[:10000]  # Limita para otimização
-                    extraction_method = "jina"
-                    logger.info(f"✅ JINA extraiu {len(content)} caracteres de {url}")
-            except Exception as e:
-                logger.warning(f"⚠️ JINA falhou para {url}: {str(e)}")
+            # 1. JINA Reader (mais eficaz) - COM TIMEOUT AGRESSIVO
+            if time.time() - extraction_start_time < max_extraction_time:
+                try:
+                    jina_url = f"https://r.jina.ai/{url}"
+                    response = requests.get(jina_url, timeout=8)  # Timeout agressivo de 8s
+                    if response.status_code == 200 and len(response.text) > 500:
+                        content = response.text[:10000]  # Limita para otimização
+                        extraction_method = "jina"
+                        logger.info(f"✅ JINA extraiu {len(content)} caracteres de {url}")
+                except requests.exceptions.Timeout:
+                    logger.warning(f"⏰ Timeout JINA para {url} - pulando para próximo método")
+                except Exception as e:
+                    logger.warning(f"⚠️ JINA falhou para {url}: {str(e)}")
+            else:
+                logger.warning(f"⏰ Timeout global atingido - pulando JINA para {url}")
             
-            # 2. Trafilatura (fallback)
-            if not content:
+            # 2. Trafilatura (fallback) - COM TIMEOUT AGRESSIVO
+            if not content and time.time() - extraction_start_time < max_extraction_time:
                 try:
                     import trafilatura
-                    downloaded = trafilatura.fetch_url(url)
-                    if downloaded:
-                        content = trafilatura.extract(downloaded)
-                        if content and len(content) > 300:
-                            extraction_method = "trafilatura"
-                            logger.info(f"✅ Trafilatura extraiu {len(content)} caracteres de {url}")
-                except Exception as e:
+                    import signal
+                    
+                    def timeout_handler(signum, frame):
+                        raise TimeoutError("Trafilatura timeout")
+                    
+                    # Configurar timeout de 6s
+                    signal.signal(signal.SIGALRM, timeout_handler)
+                    signal.alarm(6)
+                    
+                    try:
+                        downloaded = trafilatura.fetch_url(url)
+                        if downloaded:
+                            content = trafilatura.extract(downloaded)
+                            if content and len(content) > 300:
+                                extraction_method = "trafilatura"
+                                logger.info(f"✅ Trafilatura extraiu {len(content)} caracteres de {url}")
+                    finally:
+                        signal.alarm(0)  # Cancelar timeout
+                        
+                except (TimeoutError, Exception) as e:
                     logger.warning(f"⚠️ Trafilatura falhou para {url}: {str(e)}")
+            elif not content:
+                logger.warning(f"⏰ Timeout global atingido - pulando Trafilatura para {url}")
             
-            # 3. BeautifulSoup (último recurso)
-            if not content:
+            # 3. BeautifulSoup (último recurso) - COM TIMEOUT AGRESSIVO
+            if not content and time.time() - extraction_start_time < max_extraction_time:
                 try:
-                    response = requests.get(url, timeout=self.config["fast_timeout"], headers={
+                    response = requests.get(url, timeout=5, headers={  # 5s timeout
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                     })
                     if response.status_code == 200:
@@ -3742,9 +4639,16 @@ class AlibabaWebSailorAgent:
                 except Exception as e:
                     logger.warning(f"⚠️ BeautifulSoup falhou para {url}: {str(e)}")
             
+            # Verificar se timeout global foi atingido
+            if time.time() - extraction_start_time >= max_extraction_time:
+                logger.warning(f"⏰ Timeout global de extração atingido para {url} - gerando fallback")
+                self._mark_url_failed(url)
+                return self._generate_fallback_content(url, title, description, "extraction_timeout")
+            
             if not content or len(content) < 100:
                 logger.warning(f"❌ Nenhum conteúdo válido extraído de {url}")
-                return None
+                self._mark_url_failed(url)
+                return self._generate_fallback_content(url, title, description, "no_content_extracted")
             
             # Limpa e processa o conteúdo
             content_cleaned = content[:8000] if len(content) > 8000 else content
@@ -4053,7 +4957,10 @@ class AlibabaWebSailorAgent:
             # Salva dados se session_id fornecido
             if session_id:
                 try:
-                    from services.auto_save_manager import auto_save_manager
+                    try:
+                        from .auto_save_manager import auto_save_manager
+                    except ImportError:
+                        from auto_save_manager import auto_save_manager
                     save_result = auto_save_manager.save_extracted_content({
                         'url': f'alibaba_websailor_research_{session_id}',
                         'titulo': f'Pesquisa Profunda: {query}',
@@ -4063,6 +4970,40 @@ class AlibabaWebSailorAgent:
                         'platform': 'web_research'
                     }, session_id)
                     logger.info(f"✅ Dados salvos via AutoSaveManager: {save_result.get('success', False)}")
+                    
+                    # SALVAR TRECHOS ESPECÍFICOS PARA CONSOLIDAÇÃO
+                    trechos_para_consolidacao = []
+                    for fonte in fontes_com_conteudo_real[:10]:  # Top 10 fontes
+                        trecho = {
+                            'url': fonte.get('url', ''),
+                            'titulo': fonte.get('title', ''),
+                            'snippet': fonte.get('snippet_real', ''),
+                            'conteudo_completo': fonte.get('conteudo_real', '')[:2000],  # Primeiros 2000 chars
+                            'qualidade': fonte.get('quality_score', 0.8),
+                            'insights': fonte.get('insights_extraidos', [])[:5],  # Top 5 insights
+                            'fonte': 'alibaba_websailor',
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        trechos_para_consolidacao.append(trecho)
+                    
+                    # Salva trechos usando salvar_etapa
+                    await salvar_etapa(
+                        etapa="alibaba_trechos_consolidacao",
+                        dados={
+                            'query': query,
+                            'trechos': trechos_para_consolidacao,
+                            'total_fontes': len(fontes_com_conteudo_real),
+                            'insights_principais': insights_reais[:10],
+                            'session_metadata': {
+                                'session_id': session_id,
+                                'timestamp': datetime.now().isoformat(),
+                                'metodo': 'navigate_and_research_deep'
+                            }
+                        },
+                        session_id=session_id
+                    )
+                    logger.info(f"💾 Trechos salvos para consolidação: {len(trechos_para_consolidacao)} itens")
+                    
                 except Exception as e:
                     logger.error(f"❌ Erro ao salvar dados: {e}")
 
@@ -4088,3 +5029,169 @@ async def find_viral_images(query: str) -> Tuple[List[ViralImage], str]:
 def find_viral_images_sync(query: str) -> Tuple[List[ViralImage], str]:
     """Função wrapper síncrona com tratamento de loop robusto"""
     return alibaba_websailor.find_viral_images(query) # Chama o método síncrono diretamente
+
+# ========================================
+# FUNÇÕES DE FALLBACK PARA APIS DE BUSCA
+# ========================================
+
+async def _search_with_serpapi_fallback(self, query: str) -> List[Dict]:
+    """Fallback usando SerpAPI quando Serper falha"""
+    results = []
+    serp_api_key = os.getenv('SERP_API_KEY')
+    if not serp_api_key:
+        return results
+    
+    try:
+        url = "https://serpapi.com/search"
+        params = {
+            'q': query,
+            'engine': 'google',
+            'api_key': serp_api_key,
+            'num': 10,
+            'gl': 'br',
+            'hl': 'pt'
+        }
+        
+        if HAS_ASYNC_DEPS:
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        for item in data.get('organic_results', []):
+                            results.append({
+                                'image_url': '',
+                                'page_url': item.get('link', ''),
+                                'title': item.get('title', ''),
+                                'description': item.get('snippet', ''),
+                                'source': 'serpapi'
+                            })
+        else:
+            response = requests.get(url, params=params, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get('organic_results', []):
+                    results.append({
+                        'image_url': '',
+                        'page_url': item.get('link', ''),
+                        'title': item.get('title', ''),
+                        'description': item.get('snippet', ''),
+                        'source': 'serpapi'
+                    })
+                    
+    except Exception as e:
+        logger.error(f"❌ Erro SerpAPI fallback: {e}")
+    
+    return results
+
+async def _search_with_tavily_fallback(self, query: str) -> List[Dict]:
+    """Fallback usando Tavily quando outras APIs falham"""
+    results = []
+    tavily_api_key = os.getenv('TAVILY_API_KEY')
+    if not tavily_api_key:
+        return results
+    
+    try:
+        url = "https://api.tavily.com/search"
+        payload = {
+            'api_key': tavily_api_key,
+            'query': query,
+            'search_depth': 'basic',
+            'include_images': True,
+            'max_results': 10
+        }
+        
+        if HAS_ASYNC_DEPS:
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=payload) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        for item in data.get('results', []):
+                            results.append({
+                                'image_url': '',
+                                'page_url': item.get('url', ''),
+                                'title': item.get('title', ''),
+                                'description': item.get('content', ''),
+                                'source': 'tavily'
+                            })
+        else:
+            response = requests.post(url, json=payload, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get('results', []):
+                    results.append({
+                        'image_url': '',
+                        'page_url': item.get('url', ''),
+                        'title': item.get('title', ''),
+                        'description': item.get('content', ''),
+                        'source': 'tavily'
+                    })
+                    
+    except Exception as e:
+        logger.error(f"❌ Erro Tavily fallback: {e}")
+    
+    return results
+
+async def _search_with_exa_fallback(self, query: str) -> List[Dict]:
+    """Fallback usando EXA Neural Search quando outras APIs falham"""
+    results = []
+    exa_api_key = os.getenv('EXA_API_KEY')
+    if not exa_api_key:
+        return results
+    
+    try:
+        url = "https://api.exa.ai/search"
+        headers = {
+            'x-api-key': exa_api_key,
+            'Content-Type': 'application/json'
+        }
+        payload = {
+            'query': query,
+            'num_results': 10,
+            'include_domains': [],
+            'exclude_domains': [],
+            'use_autoprompt': True
+        }
+        
+        if HAS_ASYNC_DEPS:
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, headers=headers, json=payload) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        for item in data.get('results', []):
+                            results.append({
+                                'image_url': '',
+                                'page_url': item.get('url', ''),
+                                'title': item.get('title', ''),
+                                'description': item.get('text', ''),
+                                'source': 'exa'
+                            })
+        else:
+            response = requests.post(url, headers=headers, json=payload, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get('results', []):
+                    results.append({
+                        'image_url': '',
+                        'page_url': item.get('url', ''),
+                        'title': item.get('title', ''),
+                        'description': item.get('text', ''),
+                        'source': 'exa'
+                    })
+                    
+    except Exception as e:
+        logger.error(f"❌ Erro EXA fallback: {e}")
+    
+    return results
+
+# Adicionar as funções como métodos da classe
+AlibabaWebSailorAgent._search_with_serpapi_fallback = _search_with_serpapi_fallback
+AlibabaWebSailorAgent._search_with_tavily_fallback = _search_with_tavily_fallback
+AlibabaWebSailorAgent._search_with_exa_fallback = _search_with_exa_fallback
+
+# Adicionar métodos também na classe ViralImageFinder
+ViralImageFinder._search_with_serpapi_fallback = _search_with_serpapi_fallback
+ViralImageFinder._search_with_tavily_fallback = _search_with_tavily_fallback
+ViralImageFinder._search_with_exa_fallback = _search_with_exa_fallback

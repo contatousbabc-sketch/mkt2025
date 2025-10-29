@@ -401,7 +401,7 @@ class PredictiveAnalyticsEngine:
         if HAS_SPACY and self.nlp_model:
             try:
                 doc = self.nlp_model(combined_text[:100000]) # Limita para performance
-                keywords = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and token.is_space and token.is_alpha]
+                keywords = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and token.is_alpha]
                 entities = [ent.text for ent in doc.ents if ent.label_ in ["ORG", "PERSON", "LOC", "PRODUCT"]]
                 # Combina e seleciona as mais relevantes
                 all_terms = Counter(keywords + entities)
@@ -442,12 +442,24 @@ class PredictiveAnalyticsEngine:
             "content_summaries": {}
         }
 
-        massive_data_path = session_dir / "massive_data_collected.json"
-        if not massive_data_path.exists():
-            logger.warning(f"⚠️ massive_data_collected.json não encontrado em {session_dir}")
+        # Verifica múltiplos locais para dados massivos
+        possible_files = [
+            session_dir / "massive_data_collected.json",
+            session_dir / "consolidado.json",
+            Path(f"analyses_data/pesquisa_web/{session_dir.name}/consolidado.json")
+        ]
+
+        massive_data_file = None
+        for file_path in possible_files:
+            if file_path.exists():
+                massive_data_file = file_path
+                break
+
+        if not massive_data_file:
+            logger.warning(f"⚠️ Nenhum arquivo de dados encontrado para {session_dir}")
             return textual_insights
 
-        with open(massive_data_path, "r", encoding="utf-8") as f:
+        with open(massive_data_file, "r", encoding="utf-8") as f:
             massive_data = json.load(f)
 
         all_text_content = []
@@ -538,12 +550,24 @@ class PredictiveAnalyticsEngine:
             "future_projections": {}
         }
 
-        massive_data_path = session_dir / "massive_data_collected.json"
-        if not massive_data_path.exists():
-            logger.warning(f"⚠️ massive_data_collected.json não encontrado em {session_dir}")
+        # Verifica múltiplos locais para dados massivos
+        possible_files = [
+            session_dir / "massive_data_collected.json",
+            session_dir / "consolidado.json",
+            Path(f"analyses_data/pesquisa_web/{session_dir.name}/consolidado.json")
+        ]
+
+        massive_data_file = None
+        for file_path in possible_files:
+            if file_path.exists():
+                massive_data_file = file_path
+                break
+
+        if not massive_data_file:
+            logger.warning(f"⚠️ Nenhum arquivo de dados encontrado para {session_dir}")
             return temporal_trends
 
-        with open(massive_data_path, "r", encoding="utf-8") as f:
+        with open(massive_data_file, "r", encoding="utf-8") as f:
             massive_data = json.load(f)
 
         # Coleta dados com timestamp
@@ -660,7 +684,6 @@ class PredictiveAnalyticsEngine:
                 # OCR (se disponível)
                 if HAS_OCR:
                     try:
-                        # CORRIGIDO: Linha 695
                         text = pytesseract.image_to_string(Image.open(img_path), lang='por')
                         visual_insights["text_extracted_from_images"][img_path.name] = text[:500] + "..." if len(text) > 500 else text
                     except Exception as e:
@@ -696,12 +719,24 @@ class PredictiveAnalyticsEngine:
             "influencer_detection": []
         }
 
-        massive_data_path = session_dir / "massive_data_collected.json"
-        if not massive_data_path.exists():
-            logger.warning(f"⚠️ massive_data_collected.json não encontrado em {session_dir}")
+        # Verifica múltiplos locais para dados massivos
+        possible_files = [
+            session_dir / "massive_data_collected.json",
+            session_dir / "consolidado.json",
+            Path(f"analyses_data/pesquisa_web/{session_dir.name}/consolidado.json")
+        ]
+
+        massive_data_file = None
+        for file_path in possible_files:
+            if file_path.exists():
+                massive_data_file = file_path
+                break
+
+        if not massive_data_file:
+            logger.warning(f"⚠️ Nenhum arquivo de dados encontrado para {session_dir}")
             return network_analysis
 
-        with open(massive_data_path, "r", encoding="utf-8") as f:
+        with open(massive_data_file, "r", encoding="utf-8") as f:
             massive_data = json.load(f)
 
         if not HAS_NETWORKX:
@@ -763,12 +798,24 @@ class PredictiveAnalyticsEngine:
             "sentiment_shifts": []
         }
 
-        massive_data_path = session_dir / "massive_data_collected.json"
-        if not massive_data_path.exists():
-            logger.warning(f"⚠️ massive_data_collected.json não encontrado em {session_dir}")
+        # Verifica múltiplos locais para dados massivos
+        possible_files = [
+            session_dir / "massive_data_collected.json",
+            session_dir / "consolidado.json",
+            Path(f"analyses_data/pesquisa_web/{session_dir.name}/consolidado.json")
+        ]
+
+        massive_data_file = None
+        for file_path in possible_files:
+            if file_path.exists():
+                massive_data_file = file_path
+                break
+
+        if not massive_data_file:
+            logger.warning(f"⚠️ Nenhum arquivo de dados encontrado para {session_dir}")
             return sentiment_dynamics
 
-        with open(massive_data_path, "r", encoding="utf-8") as f:
+        with open(massive_data_file, "r", encoding="utf-8") as f:
             massive_data = json.load(f)
 
         if not HAS_VADER or not self.sentiment_analyzer:
@@ -862,12 +909,24 @@ class PredictiveAnalyticsEngine:
             "declining_topics": []
         }
 
-        massive_data_path = session_dir / "massive_data_collected.json"
-        if not massive_data_path.exists():
-            logger.warning(f"⚠️ massive_data_collected.json não encontrado em {session_dir}")
+        # Verifica múltiplos locais para dados massivos
+        possible_files = [
+            session_dir / "massive_data_collected.json",
+            session_dir / "consolidado.json",
+            Path(f"analyses_data/pesquisa_web/{session_dir.name}/consolidado.json")
+        ]
+
+        massive_data_file = None
+        for file_path in possible_files:
+            if file_path.exists():
+                massive_data_file = file_path
+                break
+
+        if not massive_data_file:
+            logger.warning(f"⚠️ Nenhum arquivo de dados encontrado para {session_dir}")
             return topic_evolution
 
-        with open(massive_data_path, "r", encoding="utf-8") as f:
+        with open(massive_data_file, "r", encoding="utf-8") as f:
             massive_data = json.load(f)
 
         all_text_content = []
@@ -968,12 +1027,24 @@ class PredictiveAnalyticsEngine:
             "engagement_prediction": {}
         }
 
-        massive_data_path = session_dir / "massive_data_collected.json"
-        if not massive_data_path.exists():
-            logger.warning(f"⚠️ massive_data_collected.json não encontrado em {session_dir}")
+        # Verifica múltiplos locais para dados massivos
+        possible_files = [
+            session_dir / "massive_data_collected.json",
+            session_dir / "consolidado.json",
+            Path(f"analyses_data/pesquisa_web/{session_dir.name}/consolidado.json")
+        ]
+
+        massive_data_file = None
+        for file_path in possible_files:
+            if file_path.exists():
+                massive_data_file = file_path
+                break
+
+        if not massive_data_file:
+            logger.warning(f"⚠️ Nenhum arquivo de dados encontrado para {session_dir}")
             return engagement_patterns
 
-        with open(massive_data_path, "r", encoding="utf-8") as f:
+        with open(massive_data_file, "r", encoding="utf-8") as f:
             massive_data = json.load(f)
 
         social_data = massive_data.get("social_media_data", {}).get("all_platforms_data", {}).get("platforms", {})
@@ -1086,7 +1157,6 @@ class PredictiveAnalyticsEngine:
         else:
             overall_outlook += "estabilidade, mas com pontos de atenção. "
 
-        # CORRIGIDO: Linha 1142 - Indentação e aspas
         if predictions["viral_content_potential"]:
             overall_outlook += f"Há um alto potencial para conteúdo viral, especialmente em {predictions['viral_content_potential']['most_viral_platform']}. "
 
@@ -1192,7 +1262,6 @@ class PredictiveAnalyticsEngine:
         # Oportunidades de Desenvolvimento de Produto
         emerging_topics = insights.get("topic_evolution", {}).get("emerging_topics", [])
         for topic in emerging_topics:
-            # CORRIGIDO: Linha 1244
             opportunity_mapping["product_development"].append({"description": f"Desenvolver funcionalidades ou produtos relacionados ao tópico emergente: {topic.get('keywords', '')}", "relevance": "Alta"})
 
         # Oportunidades de Campanhas de Marketing
@@ -1203,7 +1272,6 @@ class PredictiveAnalyticsEngine:
 
         top_engaging_content = insights.get("engagement_patterns", {}).get("top_engaging_content", [])
         if top_engaging_content:
-            # CORRIGIDO: Linha 1253
             opportunity_mapping["marketing_campaigns"].append({"description": f"Analisar e replicar o sucesso do conteúdo de maior engajamento: {top_engaging_content[0].get('title', '')}", "relevance": "Alta"})
 
         # Oportunidades de Estratégia de Conteúdo
@@ -1230,13 +1298,19 @@ class PredictiveAnalyticsEngine:
         }
 
         # Cobertura de dados (baseado na quantidade de dados coletados)
-        total_sources = insights.get("data_quality_assessment", {}).get("total_sources", 1) # Evita divisão por zero
+        # Adiciona verificação para massive_data_assessment existir e ter 'total_sources'
+        data_quality_assessment = insights.get("data_quality_assessment", {})
+        total_sources = data_quality_assessment.get("total_sources", 1) if data_quality_assessment else 1
+        
         if total_sources > 0:
             confidence_metrics["data_coverage_score"] = min(100, (total_sources / 100) * 100) # Ex: 100 fontes = 100%
 
         # Precisão do modelo (simplificado, baseado na qualidade dos dados e existência de previsões)
-        data_quality_score = insights.get("data_quality_assessment", {}).get("overall_quality_score", 0)
-        if insights.get("predictions", {}).get("market_trend_forecast"):
+        data_quality_score = data_quality_assessment.get("overall_quality_score", 0) if data_quality_assessment else 0
+        
+        has_predictions = bool(insights.get("predictions", {}).get("market_trend_forecast"))
+        
+        if has_predictions:
             confidence_metrics["model_accuracy_score"] = data_quality_score * 0.8 + 20 # 80% da qualidade dos dados + 20% base
         else:
             confidence_metrics["model_accuracy_score"] = data_quality_score * 0.5 # Menos confiança sem previsões
@@ -1268,12 +1342,25 @@ class PredictiveAnalyticsEngine:
     async def _assess_data_quality(self, session_dir: Path) -> Dict[str, Any]:
         """Avalia a qualidade dos dados brutos coletados (chamada interna)."""
         logger.info("🔍 Avaliando qualidade dos dados brutos...")
-        massive_data_path = session_dir / "massive_data_collected.json"
-        if not massive_data_path.exists():
+        
+        # Verifica múltiplos locais para dados massivos
+        possible_files = [
+            session_dir / "massive_data_collected.json",
+            session_dir / "consolidado.json",
+            Path(f"analyses_data/pesquisa_web/{session_dir.name}/consolidado.json")
+        ]
+
+        massive_data_file = None
+        for file_path in possible_files:
+            if file_path.exists():
+                massive_data_file = file_path
+                break
+        
+        if not massive_data_file:
             logger.warning(f"⚠️ massive_data_collected.json não encontrado em {session_dir}")
             return {"success": False, "error": "Dados brutos não encontrados"}
 
-        with open(massive_data_path, "r", encoding="utf-8") as f:
+        with open(massive_data_file, "r", encoding="utf-8") as f:
             massive_data = json.load(f)
 
         return await self.analyze_data_quality(massive_data) # Reutiliza o método existente
@@ -1290,7 +1377,6 @@ class PredictiveAnalyticsEngine:
         # Curto Prazo: Baseado em oportunidades imediatas e riscos urgentes
         emerging_topics = insights.get("opportunity_mapping", {}).get("content_strategy", [])
         if emerging_topics:
-            # CORRIGIDO: Linha 1429
             strategic_recommendations["short_term"].append({"action": f"Focar na criação de conteúdo sobre os tópicos emergentes: {emerging_topics[0].get('description', '')}", "priority": "Alta"})
 
         sentiment_shifts = insights.get("risk_assessment", {}).get("identified_risks", [])
@@ -1300,7 +1386,6 @@ class PredictiveAnalyticsEngine:
 
         # Médio Prazo: Baseado em tendências e padrões de engajamento
         if insights.get("predictions", {}).get("viral_content_potential"):
-            # CORRIGIDO: Linha 1434
             strategic_recommendations["medium_term"].append({"action": f"Desenvolver campanhas de marketing com base nos drivers de viralidade identificados em {insights['predictions']['viral_content_potential']['most_viral_platform']}.", "priority": "Média"})
 
         if insights.get("engagement_patterns", {}).get("engagement_by_platform"):
@@ -1310,7 +1395,6 @@ class PredictiveAnalyticsEngine:
         # Longo Prazo: Baseado em cenários e oportunidades de desenvolvimento de produto
         product_opportunities = insights.get("opportunity_mapping", {}).get("product_development", [])
         if product_opportunities:
-            # CORRIGIDO: Linha 1440
             strategic_recommendations["long_term"].append({"action": f"Investir em pesquisa e desenvolvimento para novos produtos/serviços alinhados com {product_opportunities[0].get('description', '')}.", "priority": "Alta"})
 
         if insights.get("scenarios", {}).get("optimistic"):
